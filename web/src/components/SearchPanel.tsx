@@ -88,7 +88,7 @@ export function SearchPanel() {
       </div>
 
       {err && (
-        <div className="bg-red-900/40 text-red-200 text-sm p-3 rounded">{err}</div>
+        <div className="bg-red-100 text-red-900 dark:bg-red-900/40 dark:text-red-200 text-sm p-3 rounded">{err}</div>
       )}
 
       <div className="space-y-2">

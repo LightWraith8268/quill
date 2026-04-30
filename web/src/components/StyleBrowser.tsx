@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type StyleProfile } from "../api.ts";
+import { MarkdownView } from "./MarkdownView.tsx";
 
 const MAX_GENRES = 2;
 const ACTIVE_KEY = "quill.activeStyle";
@@ -93,8 +94,8 @@ export function StyleBrowser() {
                   onClick={() => setActive((c) => ({ ...c, base: s.name }))}
                   className={`w-full text-left px-2 py-1.5 rounded text-sm ${
                     active.base === s.name
-                      ? "bg-teal/30 text-paper"
-                      : "hover:bg-muted/10 text-muted"
+                      ? "bg-teal/30 text-bg dark:text-paper"
+                      : "hover:bg-bg/10 dark:hover:bg-muted/10 text-muted"
                   }`}
                 >
                   <div className="truncate">{s.name}</div>
@@ -124,8 +125,8 @@ export function StyleBrowser() {
                     onClick={() => toggleGenre(g.name)}
                     className={`w-full text-left px-2 py-1.5 rounded text-sm flex items-center gap-2 ${
                       on
-                        ? "bg-tealBright/20 text-paper border border-tealBright/40"
-                        : "hover:bg-muted/10 text-muted border border-transparent"
+                        ? "bg-tealBright/20 text-bg dark:text-paper border border-tealBright/40"
+                        : "hover:bg-bg/10 dark:hover:bg-muted/10 text-muted border border-transparent"
                     }`}
                   >
                     <span
@@ -148,7 +149,7 @@ export function StyleBrowser() {
       </aside>
 
       <section className="card overflow-auto">
-        {err && <div className="text-red-300 text-sm mb-2">{err}</div>}
+        {err && <div className="text-red-700 dark:text-red-300 text-sm mb-2">{err}</div>}
         {active.base && (
           <>
             <div className="flex items-baseline gap-2 mb-4">
@@ -160,9 +161,7 @@ export function StyleBrowser() {
               )}
             </div>
             <div className="text-xs text-muted mb-4">Active style: {activeLabel}</div>
-            <pre className="whitespace-pre-wrap font-ui text-sm leading-relaxed">
-              {content}
-            </pre>
+            <MarkdownView content={content} />
           </>
         )}
       </section>

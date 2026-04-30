@@ -80,13 +80,13 @@ export function WorkflowRunner({ storyId, onComplete, onCancel }: Props) {
           Specialized prompts pinned to the right agent. Run from the active story
           and reply lands in chat history.
         </p>
-        {err && <div className="bg-red-900/40 text-red-200 text-sm p-3 rounded">{err}</div>}
+        {err && <div className="bg-red-100 text-red-900 dark:bg-red-900/40 dark:text-red-200 text-sm p-3 rounded">{err}</div>}
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {workflows.map((wf) => (
             <button
               key={wf.id}
               onClick={() => selectWf(wf)}
-              className="text-left p-4 rounded border border-muted/30 hover:border-tealBright/60 hover:bg-bg/40 transition-colors"
+              className="text-left p-4 rounded border border-bg/20 dark:border-muted/30 hover:border-tealBright/60 hover:bg-paper/40 dark:hover:bg-bg/40 transition-colors"
             >
               <div className="flex items-baseline gap-2">
                 <h3 className="font-display text-lg">{wf.title}</h3>
@@ -122,7 +122,7 @@ export function WorkflowRunner({ storyId, onComplete, onCancel }: Props) {
       {active.fields.map((f) => (
         <div key={f.name}>
           <label className="block text-sm text-muted mb-1">
-            {f.label} {f.required && <span className="text-red-400">*</span>}
+            {f.label} {f.required && <span className="text-red-700 dark:text-red-400">*</span>}
           </label>
           {f.kind === "select" ? (
             <select
@@ -162,7 +162,7 @@ export function WorkflowRunner({ storyId, onComplete, onCancel }: Props) {
       {err && <div className="bg-red-900/40 text-red-200 text-sm p-3 rounded">{err}</div>}
 
       {streamText && (
-        <div className="card bg-bg/60 max-h-80 overflow-auto">
+        <div className="card bg-paper/60 dark:bg-bg/60 max-h-80 overflow-auto">
           <div className="text-xs text-tealBright mb-1">Streaming from {active.agent}…</div>
           <pre className="whitespace-pre-wrap font-ui text-sm leading-relaxed">{streamText}</pre>
         </div>

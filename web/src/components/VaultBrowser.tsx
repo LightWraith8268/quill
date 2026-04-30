@@ -8,6 +8,7 @@ import {
   type TreeNode,
   type VaultFile,
 } from "../api.ts";
+import { MarkdownView } from "./MarkdownView.tsx";
 
 export function VaultBrowser() {
   const [tree, setTree] = useState<TreeNode | null>(null);
@@ -111,7 +112,7 @@ export function VaultBrowser() {
       </aside>
 
       <section className="card overflow-auto space-y-3">
-        {err && <div className="bg-red-900/40 text-red-200 text-sm p-3 rounded">{err}</div>}
+        {err && <div className="bg-red-100 text-red-900 dark:bg-red-900/40 dark:text-red-200 text-sm p-3 rounded">{err}</div>}
         {!activePath && (
           <p className="text-muted text-sm">Pick a file from the tree.</p>
         )}
@@ -163,7 +164,7 @@ export function VaultBrowser() {
                       {new Date(d.created_at).toLocaleString()}
                     </span>
                     <span className="text-muted">{(d.bytes / 1024).toFixed(1)} KB</span>
-                    {d.note && <span className="italic text-paper">"{d.note}"</span>}
+                    {d.note && <span className="italic text-bg dark:text-paper">"{d.note}"</span>}
                     <button
                       onClick={() => viewDraft(d.id)}
                       className="btn btn-ghost text-xs ml-auto"
@@ -180,7 +181,7 @@ export function VaultBrowser() {
                 ))}
               </ul>
               {draftViewing && (
-                <div className="card bg-bg/60 max-h-96 overflow-auto">
+                <div className="card bg-paper/60 dark:bg-bg/60 max-h-96 overflow-auto">
                   <div className="text-xs text-tealBright mb-1">
                     Snapshot {new Date(draftViewing.meta.created_at).toLocaleString()}
                   </div>
@@ -212,7 +213,7 @@ function TreeView(props: {
       <button
         onClick={() => props.onPick(node.path)}
         className={`w-full text-left px-1.5 py-0.5 rounded truncate ${
-          active ? "bg-teal/40 text-paper" : "hover:bg-muted/10 text-paper"
+          active ? "bg-teal/40 text-paper" : "hover:bg-bg/10 dark:hover:bg-muted/10 text-bg dark:text-paper"
         }`}
       >
         📄 {node.name}
@@ -225,7 +226,7 @@ function TreeView(props: {
       {!props.isRoot && (
         <button
           onClick={() => props.onToggle(node.path)}
-          className="w-full text-left px-1.5 py-0.5 rounded hover:bg-muted/10 text-paper truncate"
+          className="w-full text-left px-1.5 py-0.5 rounded hover:bg-bg/10 dark:hover:bg-muted/10 text-bg dark:text-paper truncate"
         >
           {open ? "📂" : "📁"} {node.name}
         </button>
@@ -250,41 +251,11 @@ function FileContent({
   content: string;
   onWikiClick: (target: string) => void;
 }) {
-  // Render as <pre> with wikilinks turned into clickable spans. Strips frontmatter.
+  // Strip YAML frontmatter, then hand off to MarkdownView for rendering.
   const stripped = useMemo(() => {
     const m = content.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n/);
     return m ? content.slice(m[0].length) : content;
   }, [content]);
 
-  const parts = useMemo(() => {
-    const out: { kind: "text" | "wiki"; value: string }[] = [];
-    const re = /\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]/g;
-    let last = 0;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(stripped)) !== null) {
-      if (m.index > last) out.push({ kind: "text", value: stripped.slice(last, m.index) });
-      out.push({ kind: "wiki", value: m[1]!.trim() });
-      last = re.lastIndex;
-    }
-    if (last < stripped.length) out.push({ kind: "text", value: stripped.slice(last) });
-    return out;
-  }, [stripped]);
-
-  return (
-    <pre className="whitespace-pre-wrap font-ui text-sm leading-relaxed">
-      {parts.map((p, i) =>
-        p.kind === "text" ? (
-          <span key={i}>{p.value}</span>
-        ) : (
-          <button
-            key={i}
-            onClick={() => onWikiClick(p.value)}
-            className="inline px-1 rounded text-tealBright hover:bg-tealBright/20"
-          >
-            [[{p.value}]]
-          </button>
-        )
-      )}
-    </pre>
-  );
+  return <MarkdownView content={stripped} onWikiClick={onWikiClick} />;
 }

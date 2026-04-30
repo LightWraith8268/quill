@@ -73,7 +73,7 @@ export default function App() {
         }
       />
       {bootError && (
-        <div className="bg-red-900/40 text-red-200 text-sm px-4 py-2 border-b border-red-800/50">
+        <div className="bg-red-100 text-red-900 dark:bg-red-900/40 dark:text-red-200 text-sm px-4 py-2 border-b border-red-300/60 dark:border-red-800/50">
           API unreachable: {bootError}
         </div>
       )}

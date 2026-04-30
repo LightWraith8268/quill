@@ -70,7 +70,7 @@ export function StatsPanel() {
           </button>
         </div>
         {last && (
-          <div className="text-sm font-mono bg-bg/60 border border-muted/20 rounded p-3">
+          <div className="text-sm font-mono bg-paper/40 border border-bg/10 dark:bg-bg/60 dark:border-muted/20 rounded p-3">
             <div>files scanned: {last.filesScanned}</div>
             <div>changed: {last.filesChanged}</div>
             <div>deleted: {last.filesDeleted}</div>
@@ -80,7 +80,7 @@ export function StatsPanel() {
         )}
       </div>
 
-      {err && <div className="bg-red-900/40 text-red-200 text-sm p-3 rounded">{err}</div>}
+      {err && <div className="bg-red-100 text-red-900 dark:bg-red-900/40 dark:text-red-200 text-sm p-3 rounded">{err}</div>}
     </div>
   );
 }

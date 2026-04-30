@@ -11,6 +11,7 @@ import {
   type Story,
 } from "../api.ts";
 import { StoryConfig } from "./StoryConfig.tsx";
+import { MarkdownView } from "./MarkdownView.tsx";
 
 type Props = {
   storyId: number | null;
@@ -141,7 +142,7 @@ export function ChatPanel({ storyId }: Props) {
 
       <div ref={scrollRef} className="card overflow-auto space-y-4">
         {err && (
-          <div className="bg-red-900/40 text-red-200 text-sm p-3 rounded">{err}</div>
+          <div className="bg-red-100 text-red-900 dark:bg-red-900/40 dark:text-red-200 text-sm p-3 rounded">{err}</div>
         )}
         {messages.length === 0 && !streamText && (
           <p className="text-muted text-sm">No messages yet — start the conversation.</p>
@@ -251,14 +252,18 @@ function MessageBubble({ m, streaming }: { m: ChatMessage; streaming?: boolean }
     <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
       <div
         className={`max-w-[85%] rounded-lg px-4 py-3 text-sm leading-relaxed ${
-          mine ? "bg-teal/30" : "bg-bg/60 border border-muted/20"
+          mine ? "bg-teal/30 text-paper" : "bg-paper/40 border border-bg/10 dark:bg-bg/60 dark:border-muted/20"
         }`}
       >
         <div className="text-xs text-muted mb-1">
           {mine ? "You" : (m.agent ?? "assistant")}
           {streaming && <span className="ml-2 text-tealBright">streaming…</span>}
         </div>
-        <pre className="whitespace-pre-wrap font-ui">{m.content}</pre>
+        {mine || streaming ? (
+          <pre className="whitespace-pre-wrap font-ui">{m.content}</pre>
+        ) : (
+          <MarkdownView content={m.content} />
+        )}
       </div>
     </div>
   );

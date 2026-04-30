@@ -55,7 +55,7 @@ export function LoreBrowser() {
           onChange={(e) => setFilter(e.target.value)}
         />
         {loading && <p className="text-muted text-sm">Scanning vault…</p>}
-        {err && <p className="text-red-300 text-sm">{err}</p>}
+        {err && <p className="text-red-700 dark:text-red-300 text-sm">{err}</p>}
         <ul className="space-y-0.5 flex-1 overflow-auto">
           {filtered.map((e) => (
             <li key={e.name}>
@@ -64,7 +64,7 @@ export function LoreBrowser() {
                 className={`w-full text-left px-2 py-1 rounded text-sm flex items-center gap-2 ${
                   active?.name === e.name
                     ? "bg-teal/40 text-paper"
-                    : "hover:bg-muted/10 text-paper"
+                    : "hover:bg-bg/10 dark:hover:bg-muted/10 text-bg dark:text-paper"
                 }`}
               >
                 <span className="truncate flex-1">{e.name}</span>

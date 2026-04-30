@@ -17,6 +17,10 @@ const Schema = z.object({
   EMBED_RETRY_MAX: z.coerce.number().default(6),
   HTTP_PORT: z.coerce.number().default(7878),
   HTTP_TOKEN: z.string().default(""),
+  HYBRID_BM25: z
+    .string()
+    .default("true")
+    .transform((v) => v.toLowerCase() === "true"),
 });
 
 export type Config = z.infer<typeof Schema>;

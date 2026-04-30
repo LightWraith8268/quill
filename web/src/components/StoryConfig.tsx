@@ -83,7 +83,7 @@ export function StoryConfig({ story, onUpdated }: Props) {
                 onClick={() => toggleGenre(g.name)}
                 className={`px-2 py-0.5 rounded text-xs border ${
                   on
-                    ? "bg-tealBright/20 border-tealBright/60 text-paper"
+                    ? "bg-tealBright/20 border-tealBright/60 text-bg dark:text-paper"
                     : "border-muted/30 text-muted hover:border-muted/60"
                 }`}
               >

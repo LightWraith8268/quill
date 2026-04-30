@@ -47,7 +47,7 @@ export function Login(props: { onAuthed: () => void }) {
         >
           {busy ? "Verifying…" : "Unlock"}
         </button>
-        {err && <div className="text-red-400 text-sm mt-3">{err}</div>}
+        {err && <div className="text-red-700 dark:text-red-400 text-sm mt-3">{err}</div>}
       </div>
     </div>
   );

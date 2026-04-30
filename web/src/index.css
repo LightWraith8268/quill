@@ -7,17 +7,26 @@
     height: 100%;
   }
   body {
-    @apply bg-bg text-paper font-ui antialiased;
+    @apply bg-paper text-bg font-ui antialiased;
+  }
+  .dark body {
+    @apply bg-bg text-paper;
   }
   ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
   }
   ::-webkit-scrollbar-thumb {
-    background: #2a2f3a;
+    background: #c9c4b8;
     border-radius: 4px;
   }
   ::-webkit-scrollbar-thumb:hover {
+    background: #b3ad9f;
+  }
+  .dark ::-webkit-scrollbar-thumb {
+    background: #2a2f3a;
+  }
+  .dark ::-webkit-scrollbar-thumb:hover {
     background: #3a4150;
   }
 }
@@ -30,12 +39,12 @@
     @apply bg-teal hover:bg-tealBright text-paper;
   }
   .btn-ghost {
-    @apply bg-transparent border border-muted/30 hover:border-muted/60 text-paper;
+    @apply bg-transparent border border-bg/30 hover:border-bg/60 text-bg dark:border-muted/30 dark:hover:border-muted/60 dark:text-paper;
   }
   .input {
-    @apply bg-bg border border-muted/30 focus:border-tealBright rounded px-3 py-1.5 text-sm text-paper outline-none;
+    @apply bg-paper border border-bg/20 focus:border-teal rounded px-3 py-1.5 text-sm text-bg outline-none dark:bg-bg dark:border-muted/30 dark:focus:border-tealBright dark:text-paper;
   }
   .card {
-    @apply bg-bg/60 border border-muted/20 rounded-lg p-4;
+    @apply bg-paper/80 border border-bg/10 rounded-lg p-4 dark:bg-bg/60 dark:border-muted/20;
   }
 }

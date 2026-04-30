@@ -96,7 +96,7 @@ export function StoryPicker({ activeStoryId, onPick }: Props) {
                         className={`w-full text-left px-2 py-1.5 rounded text-sm flex items-center gap-2 ${
                           isActive
                             ? "bg-teal/40 text-paper"
-                            : "hover:bg-muted/10 text-paper"
+                            : "hover:bg-bg/10 dark:hover:bg-muted/10 text-bg dark:text-paper"
                         }`}
                       >
                         <span className="truncate flex-1">{d.name}</span>
