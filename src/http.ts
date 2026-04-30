@@ -43,6 +43,16 @@ import { listUsageEvents, usageRollup } from "./usage.ts";
 import { checkVoice } from "./voice.ts";
 import { runEnsemble } from "./ensemble.ts";
 import { inlineEditStream, inlineContinueStream } from "./inline.ts";
+import {
+  listOutline,
+  createNode,
+  updateNode,
+  deleteNode,
+  reorderNodes,
+  type NodeKind,
+  type NodeStatus,
+} from "./outline.ts";
+import { buildReadingPass } from "./reading.ts";
 import { buildStoryExport } from "./export.ts";
 
 const SearchBody = z.object({
@@ -129,6 +139,30 @@ const InlineContinueBody = z.object({
   storyId: z.number().int().positive().optional(),
   precedingText: z.string().min(1),
   length: z.enum(["sentence", "paragraph", "scene"]).optional(),
+});
+
+const OutlineCreateBody = z.object({
+  parentId: z.number().int().positive().nullable().optional(),
+  kind: z.enum(["act", "chapter", "scene", "note"]),
+  title: z.string().min(1),
+  summary: z.string().optional(),
+  targetWords: z.number().int().nonnegative().optional(),
+  manuscriptPath: z.string().optional(),
+});
+
+const OutlineUpdateBody = z.object({
+  title: z.string().optional(),
+  summary: z.string().nullable().optional(),
+  target_words: z.number().int().nonnegative().nullable().optional(),
+  status: z.enum(["outlined", "drafted", "revised", "locked"]).optional(),
+  manuscript_path: z.string().nullable().optional(),
+  parent_id: z.number().int().positive().nullable().optional(),
+  sort_order: z.number().int().nonnegative().optional(),
+});
+
+const OutlineReorderBody = z.object({
+  parentId: z.number().int().positive().nullable(),
+  orderedIds: z.array(z.number().int().positive()),
 });
 
 export function buildApp(cfg: Config) {
@@ -630,6 +664,70 @@ export function buildApp(cfg: Config) {
     const parsed = InlineContinueBody.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return c.json({ error: "bad request", issues: parsed.error.flatten() }, 400);
     return inlineSse(inlineContinueStream(cfg, db, parsed.data));
+  });
+
+  // ===== Outline =====
+
+  app.get("/api/stories/:id/outline", (c) => {
+    const id = Number(c.req.param("id"));
+    return c.json({ nodes: listOutline(db, id) });
+  });
+
+  app.post("/api/stories/:id/outline", async (c) => {
+    const id = Number(c.req.param("id"));
+    const parsed = OutlineCreateBody.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return c.json({ error: "bad request", issues: parsed.error.flatten() }, 400);
+    const node = createNode(db, {
+      storyId: id,
+      parentId: parsed.data.parentId ?? null,
+      kind: parsed.data.kind as NodeKind,
+      title: parsed.data.title,
+      summary: parsed.data.summary,
+      targetWords: parsed.data.targetWords,
+      manuscriptPath: parsed.data.manuscriptPath,
+    });
+    return c.json(node);
+  });
+
+  app.patch("/api/outline/:nodeId", async (c) => {
+    const nodeId = Number(c.req.param("nodeId"));
+    const parsed = OutlineUpdateBody.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return c.json({ error: "bad request", issues: parsed.error.flatten() }, 400);
+    const node = updateNode(db, nodeId, {
+      ...parsed.data,
+      status: parsed.data.status as NodeStatus | undefined,
+    });
+    if (!node) return c.json({ error: "not found" }, 404);
+    return c.json(node);
+  });
+
+  app.delete("/api/outline/:nodeId", (c) => {
+    const nodeId = Number(c.req.param("nodeId"));
+    const ok = deleteNode(db, nodeId);
+    return c.json({ ok });
+  });
+
+  app.post("/api/stories/:id/outline/reorder", async (c) => {
+    const id = Number(c.req.param("id"));
+    const parsed = OutlineReorderBody.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return c.json({ error: "bad request", issues: parsed.error.flatten() }, 400);
+    reorderNodes(db, id, parsed.data.parentId, parsed.data.orderedIds);
+    return c.json({ ok: true });
+  });
+
+  // ===== Reading-pass =====
+
+  app.get("/api/stories/:id/reading", async (c) => {
+    const id = Number(c.req.param("id"));
+    try {
+      const r = await buildReadingPass(cfg, db, id);
+      return c.json(r);
+    } catch (e) {
+      return c.json(
+        { error: e instanceof Error ? e.message : String(e) },
+        404
+      );
+    }
   });
 
   // ===== Ensemble (multi-agent parallel chat) =====

@@ -109,6 +109,23 @@ function migrate(db: DB, cfg: Config): void {
 
     CREATE INDEX IF NOT EXISTS idx_usage_ts ON usage_events(ts DESC);
     CREATE INDEX IF NOT EXISTS idx_usage_story ON usage_events(story_id, ts DESC);
+
+    CREATE TABLE IF NOT EXISTS outline_nodes (
+      id INTEGER PRIMARY KEY,
+      story_id INTEGER NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+      parent_id INTEGER,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      kind TEXT NOT NULL CHECK(kind IN ('act','chapter','scene','note')),
+      title TEXT NOT NULL,
+      summary TEXT,
+      target_words INTEGER,
+      status TEXT NOT NULL DEFAULT 'outlined' CHECK(status IN ('outlined','drafted','revised','locked')),
+      manuscript_path TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_outline_story ON outline_nodes(story_id, sort_order);
+    CREATE INDEX IF NOT EXISTS idx_outline_parent ON outline_nodes(parent_id, sort_order);
   `);
 
   const existing = db

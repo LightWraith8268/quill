@@ -137,6 +137,48 @@ export const api = {
       method: "POST",
       body: { text, seriesPath },
     }),
+  outlineList: (storyId: number) =>
+    req<{ nodes: OutlineNode[] }>(`/stories/${storyId}/outline`),
+  outlineCreate: (
+    storyId: number,
+    body: {
+      parentId?: number | null;
+      kind: "act" | "chapter" | "scene" | "note";
+      title: string;
+      summary?: string;
+      targetWords?: number;
+      manuscriptPath?: string;
+    }
+  ) =>
+    req<OutlineNode>(`/stories/${storyId}/outline`, {
+      method: "POST",
+      body,
+    }),
+  outlineUpdate: (
+    nodeId: number,
+    patch: Partial<{
+      title: string;
+      summary: string | null;
+      target_words: number | null;
+      status: "outlined" | "drafted" | "revised" | "locked";
+      manuscript_path: string | null;
+      parent_id: number | null;
+      sort_order: number;
+    }>
+  ) => req<OutlineNode>(`/outline/${nodeId}`, { method: "PATCH", body: patch }),
+  outlineDelete: (nodeId: number) =>
+    req<{ ok: boolean }>(`/outline/${nodeId}`, { method: "DELETE" }),
+  outlineReorder: (
+    storyId: number,
+    parentId: number | null,
+    orderedIds: number[]
+  ) =>
+    req<{ ok: boolean }>(`/stories/${storyId}/outline/reorder`, {
+      method: "POST",
+      body: { parentId, orderedIds },
+    }),
+  readingPass: (storyId: number) =>
+    req<ReadingPass>(`/stories/${storyId}/reading`),
   storyDelete: (id: number) =>
     req<{ ok: boolean }>(`/stories/${id}`, { method: "DELETE" }),
   storyMessages: (id: number) =>
@@ -277,6 +319,33 @@ export type DraftMeta = {
   created_at: number;
 };
 export type DraftFull = DraftMeta & { content: string };
+
+export type OutlineNode = {
+  id: number;
+  story_id: number;
+  parent_id: number | null;
+  sort_order: number;
+  kind: "act" | "chapter" | "scene" | "note";
+  title: string;
+  summary: string | null;
+  target_words: number | null;
+  status: "outlined" | "drafted" | "revised" | "locked";
+  manuscript_path: string | null;
+  created_at: number;
+  updated_at: number;
+};
+export type ReadingPart = {
+  title: string;
+  path: string;
+  content: string;
+  bytes: number;
+  source: "outline" | "filesystem";
+};
+export type ReadingPass = {
+  story: { id: number; name: string; path: string };
+  parts: ReadingPart[];
+  totalBytes: number;
+};
 
 export type VoiceCheckResult = {
   score: number;

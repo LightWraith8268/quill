@@ -11,10 +11,12 @@ import { WorkflowRunner } from "./components/WorkflowRunner.tsx";
 import { VaultBrowser } from "./components/VaultBrowser.tsx";
 import { LoreBrowser } from "./components/LoreBrowser.tsx";
 import { CharacterTimeline } from "./components/CharacterTimeline.tsx";
+import { OutlineView } from "./components/OutlineView.tsx";
 import { VAULT_NAV_EVENT, VAULT_PENDING_KEY } from "./citations.ts";
 
 type Tab =
   | "chat"
+  | "outline"
   | "workflows"
   | "search"
   | "vault"
@@ -108,6 +110,14 @@ export default function App() {
       )}
       <main className="flex-1 overflow-auto p-3 sm:p-6">
         {tab === "chat" && <ChatPanel storyId={activeStoryId} />}
+        {tab === "outline" &&
+          (activeStoryId ? (
+            <OutlineView storyId={activeStoryId} />
+          ) : (
+            <div className="max-w-3xl mx-auto card text-center text-muted py-12">
+              Pick a story to outline.
+            </div>
+          ))}
         {tab === "workflows" &&
           (activeStoryId ? (
             <div className="max-w-5xl mx-auto">

@@ -3,6 +3,7 @@ import { getTheme, setTheme, type ThemeMode } from "../theme.ts";
 
 type Tab =
   | "chat"
+  | "outline"
   | "workflows"
   | "search"
   | "vault"
@@ -19,6 +20,7 @@ export function TopBar(props: {
 }) {
   const tabs: { id: Tab; label: string }[] = [
     { id: "chat", label: "Chat" },
+    { id: "outline", label: "Outline" },
     { id: "workflows", label: "Workflows" },
     { id: "search", label: "Search" },
     { id: "vault", label: "Vault" },
