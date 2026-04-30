@@ -22,7 +22,7 @@ import {
   deleteStory,
 } from "./stories.ts";
 import { listMessages, clearMessages } from "./messages.ts";
-import { runChat } from "./chat.ts";
+import { runChat, runChatRegenerate } from "./chat.ts";
 import type { AgentSelection } from "./agents/router.ts";
 import { listWorkflows, getWorkflow } from "./workflows.ts";
 import { vaultTree, readVaultFile, scanEntities, resolveWikiTarget } from "./vault.ts";
@@ -68,6 +68,12 @@ const StoryPatchBody = z.object({
 const ChatBody = z.object({
   message: z.string().min(1),
   agent: z.enum(["claude", "codex", "gemini", "auto"]).default("auto"),
+});
+
+const RegenerateBody = z.object({
+  fromMessageId: z.number().int().positive(),
+  agent: z.enum(["claude", "codex", "gemini", "auto"]).default("auto"),
+  editedContent: z.string().optional(),
 });
 
 const WorkflowRunBody = z.object({
@@ -376,6 +382,48 @@ export function buildApp(cfg: Config) {
             storyId: id,
             message,
             agent: agent as AgentSelection,
+          })) {
+            send(ev.type, ev);
+          }
+        } catch (e) {
+          send("error", { error: e instanceof Error ? e.message : String(e) });
+        } finally {
+          controller.close();
+        }
+      },
+    });
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+      },
+    });
+  });
+
+  app.post("/api/stories/:id/regenerate", async (c) => {
+    const id = Number(c.req.param("id"));
+    const story = getStory(db, id);
+    if (!story) return c.json({ error: "story not found" }, 404);
+    const parsed = RegenerateBody.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return c.json({ error: "bad request", issues: parsed.error.flatten() }, 400);
+    }
+    const { fromMessageId, agent, editedContent } = parsed.data;
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const enc = new TextEncoder();
+        const send = (event: string, data: unknown) => {
+          controller.enqueue(
+            enc.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+          );
+        };
+        try {
+          for await (const ev of runChatRegenerate(cfg, db, {
+            storyId: id,
+            fromMessageId,
+            agent: agent as AgentSelection,
+            editedContent,
           })) {
             send(ev.type, ev);
           }

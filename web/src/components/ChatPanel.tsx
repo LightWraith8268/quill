@@ -1,10 +1,11 @@
 // Per-story chat. Streams via SSE. Auto-injects context server-side
 // (style + bibles + RAG hits). Persists turns.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
   chatStream,
+  regenerateStream,
   type AgentName,
   type AgentSelection,
   type ChatMessage,
@@ -13,6 +14,8 @@ import {
 } from "../api.ts";
 import { StoryConfig } from "./StoryConfig.tsx";
 import { MarkdownView } from "./MarkdownView.tsx";
+import { PinnedContext } from "./PinnedContext.tsx";
+import { usePins, clearPins } from "../pins.ts";
 
 type Props = {
   storyId: number | null;
@@ -37,6 +40,9 @@ export function ChatPanel({ storyId }: Props) {
   const [routeReason, setRouteReason] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [usage, setUsage] = useState<UsageResponse | null>(null);
+  const [regeneratingId, setRegeneratingId] = useState<number | null>(null);
+  const [regenStreamText, setRegenStreamText] = useState("");
+  const { formatForPrompt } = usePins(storyId ?? 0);
   const turnStartRef = useRef<number>(0);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -71,7 +77,8 @@ export function ChatPanel({ storyId }: Props) {
 
   const send = async () => {
     if (!storyId || !draft.trim() || busy) return;
-    const text = draft.trim();
+    const pinPrefix = storyId ? formatForPrompt() : "";
+    const text = pinPrefix ? `${pinPrefix}\n\n${draft.trim()}` : draft.trim();
     setBusy(true);
     setErr(null);
     setStreamText("");
@@ -115,6 +122,7 @@ export function ChatPanel({ storyId }: Props) {
           setMessages(r.messages);
           setStreamText("");
           refreshUsage(storyId);
+          if (storyId) clearPins(storyId);
         } else if (ev.event === "error") {
           const data = ev.data as { error: string };
           throw new Error(data.error);
@@ -127,6 +135,44 @@ export function ChatPanel({ storyId }: Props) {
       setBusy(false);
     }
   };
+
+  const handleRegenerate = useCallback(
+    async (fromMessageId: number, ag: AgentSelection, editedContent?: string) => {
+      if (!storyId || busy || regeneratingId !== null) return;
+      setRegeneratingId(fromMessageId);
+      setRegenStreamText("");
+      setErr(null);
+      turnStartRef.current = Date.now();
+      try {
+        let buf = "";
+        for await (const ev of regenerateStream(storyId, {
+          fromMessageId,
+          agent: ag,
+          editedContent,
+        })) {
+          if (ev.event === "delta") {
+            const data = ev.data as { text: string };
+            buf += data.text;
+            setRegenStreamText(buf);
+          } else if (ev.event === "done") {
+            const r = await api.storyMessages(storyId);
+            setMessages(r.messages);
+            setRegenStreamText("");
+            refreshUsage(storyId);
+          } else if (ev.event === "error") {
+            const data = ev.data as { error: string };
+            throw new Error(data.error);
+          }
+        }
+      } catch (e) {
+        setErr((e as Error).message || "regenerate failed");
+        setRegenStreamText("");
+      } finally {
+        setRegeneratingId(null);
+      }
+    },
+    [storyId, busy, regeneratingId]
+  );
 
   const clearChat = async () => {
     if (!storyId) return;
@@ -163,7 +209,14 @@ export function ChatPanel({ storyId }: Props) {
           <p className="text-muted text-sm">No messages yet — start the conversation.</p>
         )}
         {messages.map((m) => (
-          <MessageBubble key={m.id} m={m} />
+          <MessageBubble
+            key={m.id}
+            m={m}
+            isRegenerating={regeneratingId === m.id}
+            regenStreamText={regeneratingId === m.id ? regenStreamText : ""}
+            isDisabled={busy || regeneratingId !== null}
+            onRegenerate={handleRegenerate}
+          />
         ))}
         {streamText && (
           <MessageBubble
@@ -220,6 +273,7 @@ export function ChatPanel({ storyId }: Props) {
       )}
 
       <div className="card">
+        {storyId && <PinnedContext storyId={storyId} />}
         <div className="flex items-center gap-2 mb-2">
           <select
             className="input"
@@ -321,24 +375,133 @@ function UsageHud({
   );
 }
 
-function MessageBubble({ m, streaming }: { m: ChatMessage; streaming?: boolean }) {
+type BubbleProps = {
+  m: ChatMessage;
+  streaming?: boolean;
+  isRegenerating?: boolean;
+  regenStreamText?: string;
+  isDisabled?: boolean;
+  onRegenerate?: (fromId: number, agent: AgentSelection, editedContent?: string) => void;
+};
+
+function MessageBubble({
+  m,
+  streaming,
+  isRegenerating,
+  regenStreamText,
+  isDisabled,
+  onRegenerate,
+}: BubbleProps) {
   const mine = m.role === "user";
+  const [hover, setHover] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editDraft, setEditDraft] = useState(m.content);
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  useEffect(() => {
+    if (!editing) setEditDraft(m.content);
+  }, [m.content, editing]);
+
+  const display = isRegenerating && regenStreamText ? regenStreamText : m.content;
+  const isStreaming = streaming || isRegenerating;
+  const supportsActions = !!onRegenerate && m.id > 0; // skip optimistic ids
+
+  const saveEdit = () => {
+    if (!editDraft.trim() || !onRegenerate) return;
+    setEditing(false);
+    setPickerOpen(false);
+    onRegenerate(m.id, "auto", editDraft.trim());
+  };
+
+  const pickRerun = (ag: AgentName) => {
+    setPickerOpen(false);
+    onRegenerate?.(m.id, ag);
+  };
+
   return (
-    <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-      <div
-        className={`max-w-[85%] rounded-lg px-4 py-3 text-sm leading-relaxed ${
-          mine ? "bg-teal/30 text-paper" : "bg-paper/40 border border-bg/10 dark:bg-bg/60 dark:border-muted/20"
-        }`}
-      >
-        <div className="text-xs text-muted mb-1">
-          {mine ? "You" : (m.agent ?? "assistant")}
-          {streaming && <span className="ml-2 text-tealBright">streaming…</span>}
-        </div>
-        {mine || streaming ? (
-          <pre className="whitespace-pre-wrap font-ui">{m.content}</pre>
-        ) : (
-          <MarkdownView content={m.content} />
+    <div
+      className={`flex ${mine ? "justify-end" : "justify-start"}`}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => {
+        setHover(false);
+        setPickerOpen(false);
+      }}
+    >
+      <div className="relative max-w-[85%]">
+        {hover && supportsActions && !isStreaming && !isDisabled && !editing && (
+          <div className={`absolute -top-7 ${mine ? "right-0" : "left-0"} flex gap-1 z-10`}>
+            {mine ? (
+              <button
+                onClick={() => setEditing(true)}
+                className="px-2 py-0.5 text-xs rounded bg-bg dark:bg-paper border border-muted/30 text-muted hover:text-tealBright hover:border-tealBright"
+              >
+                Edit
+              </button>
+            ) : (
+              <div className="relative">
+                <button
+                  onClick={() => setPickerOpen((v) => !v)}
+                  className="px-2 py-0.5 text-xs rounded bg-bg dark:bg-paper border border-muted/30 text-muted hover:text-tealBright hover:border-tealBright"
+                >
+                  Rerun…
+                </button>
+                {pickerOpen && (
+                  <div className="absolute top-full mt-1 left-0 flex gap-1 bg-bg dark:bg-paper border border-muted/30 rounded p-1 shadow-lg z-20 whitespace-nowrap">
+                    {(["claude", "codex", "gemini"] as AgentName[]).map((ag) => (
+                      <button
+                        key={ag}
+                        onClick={() => pickRerun(ag)}
+                        className="px-2 py-0.5 text-xs rounded hover:bg-teal/30 hover:text-paper capitalize"
+                      >
+                        {ag}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         )}
+
+        <div
+          className={`rounded-lg px-4 py-3 text-sm leading-relaxed ${
+            mine
+              ? "bg-teal/30 text-paper"
+              : "bg-paper/40 border border-bg/10 dark:bg-bg/60 dark:border-muted/20"
+          } ${isRegenerating ? "opacity-70" : ""}`}
+        >
+          <div className="text-xs text-muted mb-1">
+            {mine ? "You" : (m.agent ?? "assistant")}
+            {isStreaming && <span className="ml-2 text-tealBright">streaming…</span>}
+          </div>
+          {editing ? (
+            <div className="space-y-2">
+              <textarea
+                className="input w-full font-ui resize-none text-sm"
+                rows={4}
+                value={editDraft}
+                onChange={(e) => setEditDraft(e.target.value)}
+                autoFocus
+              />
+              <div className="flex gap-2 justify-end">
+                <button onClick={() => setEditing(false)} className="btn btn-ghost text-xs">
+                  Cancel
+                </button>
+                <button
+                  onClick={saveEdit}
+                  disabled={!editDraft.trim()}
+                  className="btn btn-primary text-xs"
+                >
+                  Save & regenerate
+                </button>
+              </div>
+            </div>
+          ) : mine || isStreaming ? (
+            <pre className="whitespace-pre-wrap font-ui">{display}</pre>
+          ) : (
+            <MarkdownView content={display} />
+          )}
+        </div>
       </div>
     </div>
   );

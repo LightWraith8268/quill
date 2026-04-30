@@ -7,7 +7,15 @@ import type { Config } from "./config.ts";
 import type { DB } from "./db.ts";
 import type { Story } from "./stories.ts";
 import { getStory } from "./stories.ts";
-import { listMessages, appendMessage, type Message } from "./messages.ts";
+import {
+  listMessages,
+  appendMessage,
+  getMessage,
+  updateMessageContent,
+  deleteFromMessage,
+  truncateAfterMessage,
+  type Message,
+} from "./messages.ts";
 import { composeStyle } from "./style.ts";
 import { search, type SearchHit } from "./search.ts";
 import { pickAgent, streamFor, type AgentName, type AgentSelection } from "./agents/router.ts";
@@ -95,6 +103,117 @@ export async function* runChat(
     agent: route.agent,
     content: full,
     contextUsed: { ...built.usage, routedAgent: route.agent, routeReason: route.reason },
+  });
+  yield { type: "done", assistantId: assistant.id };
+}
+
+export type RegenerateRequest = {
+  storyId: number;
+  fromMessageId: number;
+  agent: AgentSelection;
+  editedContent?: string;
+};
+
+export async function* runChatRegenerate(
+  cfg: Config,
+  db: DB,
+  req: RegenerateRequest
+): AsyncGenerator<ChatStreamEvent, void, void> {
+  const story = getStory(db, req.storyId);
+  if (!story) {
+    yield { type: "error", error: `story ${req.storyId} not found` };
+    return;
+  }
+
+  const target = getMessage(db, req.fromMessageId);
+  if (!target || target.story_id !== req.storyId) {
+    yield {
+      type: "error",
+      error: `message ${req.fromMessageId} not found in story ${req.storyId}`,
+    };
+    return;
+  }
+
+  let userPrompt: string;
+
+  if (req.editedContent !== undefined) {
+    if (target.role !== "user") {
+      yield {
+        type: "error",
+        error: "editedContent provided but target is not a user message",
+      };
+      return;
+    }
+    updateMessageContent(db, req.fromMessageId, req.editedContent);
+    truncateAfterMessage(db, req.storyId, req.fromMessageId);
+    userPrompt = req.editedContent;
+  } else {
+    if (target.role !== "assistant") {
+      yield {
+        type: "error",
+        error: "no editedContent and target is not an assistant message",
+      };
+      return;
+    }
+    deleteFromMessage(db, req.storyId, req.fromMessageId);
+    const remaining = listMessages(db, req.storyId, 200);
+    const lastUser = [...remaining].reverse().find((m) => m.role === "user");
+    if (!lastUser) {
+      yield {
+        type: "error",
+        error: "no preceding user message found to regenerate from",
+      };
+      return;
+    }
+    userPrompt = lastUser.content;
+  }
+
+  const fullHistory = listMessages(db, story.id, HISTORY_TURNS * 2);
+  const priorHistory = fullHistory.slice(0, -1);
+
+  const built = await buildContext(cfg, db, story, priorHistory, userPrompt);
+  const route = pickAgent(req.agent, userPrompt);
+  yield {
+    type: "context",
+    usage: built.usage,
+    agent: route.agent,
+    routeReason: route.reason,
+  };
+
+  const agentRecorder = makeRecorder(db, route.agent, story.id);
+
+  let full = "";
+  try {
+    for await (const chunk of streamFor(route.agent, userPrompt, {
+      systemPrompt: built.systemPrompt,
+      cwd: cfg.VAULT_PATH,
+      onUsage: (u) =>
+        agentRecorder({
+          inputTokens: u.inputTokens,
+          outputTokens: u.outputTokens,
+          cachedInputTokens: u.cachedInputTokens,
+          model: u.model,
+        }),
+    })) {
+      full += chunk;
+      yield { type: "delta", text: chunk };
+    }
+  } catch (e) {
+    yield { type: "error", error: e instanceof Error ? e.message : String(e) };
+    return;
+  }
+
+  const assistant = appendMessage(db, {
+    storyId: story.id,
+    role: "assistant",
+    agent: route.agent,
+    content: full,
+    contextUsed: {
+      ...built.usage,
+      routedAgent: route.agent,
+      routeReason: route.reason,
+      regeneratedFrom: req.fromMessageId,
+    },
   });
   yield { type: "done", assistantId: assistant.id };
 }

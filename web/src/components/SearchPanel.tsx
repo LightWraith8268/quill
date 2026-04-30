@@ -1,8 +1,12 @@
 import { useState } from "react";
 import { api, type SearchHit, type SearchMode } from "../api.ts";
 import { searchHistory, useSearchHistory } from "../recents.ts";
+import { addPin } from "../pins.ts";
+import { PinnedContext } from "./PinnedContext.tsx";
 
-export function SearchPanel() {
+type Props = { activeStoryId: number | null };
+
+export function SearchPanel({ activeStoryId }: Props) {
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<SearchMode>("lore");
   const [topK, setTopK] = useState(8);
@@ -136,11 +140,26 @@ export function SearchPanel() {
         </div>
       )}
 
+      {activeStoryId && <PinnedContext storyId={activeStoryId} />}
+
       <div className="space-y-2">
         {hits.map((h) => {
           const open = expanded.has(h.chunkId);
           const score = h.rerankScore ?? 1 - h.vectorDistance;
           const preview = open ? h.content : h.content.slice(0, 280);
+          const pinDisabled = !activeStoryId;
+          const onPin = (e: React.MouseEvent): void => {
+            e.stopPropagation();
+            if (!activeStoryId) return;
+            addPin(activeStoryId, {
+              id: crypto.randomUUID(),
+              kind: "search-hit",
+              path: h.filePath,
+              heading: h.headingPath ?? null,
+              preview: h.content.slice(0, 600),
+              ts: Date.now(),
+            });
+          };
           return (
             <div
               key={h.chunkId}
@@ -155,9 +174,22 @@ export function SearchPanel() {
                 <span>
                   L{h.startLine}–{h.endLine}
                 </span>
-                <span className="ml-auto px-1.5 py-0.5 border border-muted/30 rounded">
+                <span className="px-1.5 py-0.5 border border-muted/30 rounded">
                   {h.tags}
                 </span>
+                <button
+                  type="button"
+                  onClick={onPin}
+                  disabled={pinDisabled}
+                  title={pinDisabled ? "Pick a story first" : "Pin as next-turn context"}
+                  className={`ml-auto px-1.5 py-0.5 rounded text-xs border ${
+                    pinDisabled
+                      ? "border-muted/20 text-muted/40 cursor-not-allowed"
+                      : "border-tealBright/40 text-tealBright hover:bg-tealBright/10"
+                  }`}
+                >
+                  📌
+                </button>
               </div>
               {h.headingPath && (
                 <div className="text-sm text-tealBright mb-1">{h.headingPath}</div>

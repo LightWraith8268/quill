@@ -113,7 +113,7 @@ export default function App() {
               Pick a story from the top bar to run workflows.
             </div>
           ))}
-        {tab === "search" && <SearchPanel />}
+        {tab === "search" && <SearchPanel activeStoryId={activeStoryId} />}
         {tab === "vault" && <VaultBrowser />}
         {tab === "lore" && <LoreBrowser />}
         {tab === "styles" && <StyleBrowser />}

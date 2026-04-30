@@ -306,3 +306,17 @@ export async function* workflowStream(
   yield* parseSse(reader);
 }
 
+export type RegenerateOpts = {
+  fromMessageId: number;
+  agent: AgentSelection;
+  editedContent?: string;
+};
+
+export async function* regenerateStream(
+  storyId: number,
+  opts: RegenerateOpts
+): AsyncGenerator<{ event: string; data: unknown }, void, void> {
+  const reader = await openSse(`/api/stories/${storyId}/regenerate`, opts);
+  yield* parseSse(reader);
+}
+
