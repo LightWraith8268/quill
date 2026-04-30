@@ -25,8 +25,8 @@ export function Login(props: { onAuthed: () => void }) {
   };
 
   return (
-    <div className="h-full flex items-center justify-center">
-      <div className="card w-full max-w-md">
+    <div className="h-full flex items-center justify-center px-3 sm:px-4">
+      <div className="card w-full max-w-md p-3 sm:p-4">
         <h1 className="font-display text-3xl mb-1">
           Quill <span className="italic text-tealBright">&</span> the Vault
         </h1>

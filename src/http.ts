@@ -38,6 +38,7 @@ import {
 import { checkHealth } from "./health.ts";
 import { logError, recentErrors } from "./errlog.ts";
 import { listUsageEvents, usageRollup } from "./usage.ts";
+import { buildStoryExport } from "./export.ts";
 
 const SearchBody = z.object({
   query: z.string().min(1),
@@ -474,6 +475,27 @@ export function buildApp(cfg: Config) {
       files,
       totalWords,
     });
+  });
+
+  // ===== Story export =====
+
+  app.get("/api/stories/:id/export", async (c) => {
+    const id = Number(c.req.param("id"));
+    try {
+      const { filename, payload } = await buildStoryExport(cfg, db, id);
+      return new Response(payload, {
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Content-Disposition": `attachment; filename="${filename}"`,
+          "Cache-Control": "no-store",
+        },
+      });
+    } catch (e) {
+      logError("http.story.export", e);
+      const msg = e instanceof Error ? e.message : String(e);
+      const status = msg.includes("not found") ? 404 : 500;
+      return c.json({ error: msg }, status);
+    }
   });
 
   // ===== Workflows =====

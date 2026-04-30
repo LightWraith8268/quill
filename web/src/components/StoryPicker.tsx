@@ -61,10 +61,10 @@ export function StoryPicker({ activeStoryId, onPick }: Props) {
   }
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative min-w-0 max-w-full">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="btn btn-ghost min-w-[220px] justify-start text-left flex items-center gap-2"
+        className="btn btn-ghost w-full sm:w-auto sm:min-w-[220px] max-w-full justify-start text-left flex items-center gap-2 overflow-hidden"
       >
         <span className="text-tealBright">📖</span>
         <span className="truncate">
@@ -75,7 +75,7 @@ export function StoryPicker({ activeStoryId, onPick }: Props) {
         <span className="ml-auto text-muted text-xs">▼</span>
       </button>
       {open && (
-        <div className="absolute left-0 top-full mt-1 w-[420px] max-h-[70vh] overflow-auto card z-50 shadow-2xl">
+        <div className="absolute left-0 top-full mt-1 w-[min(420px,calc(100vw-1.5rem))] max-h-[70vh] overflow-auto card z-50 shadow-2xl">
           {grouped.size === 0 && (
             <p className="text-muted text-sm">No stories under <code>Books/</code>.</p>
           )}

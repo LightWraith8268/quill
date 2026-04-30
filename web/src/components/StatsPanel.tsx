@@ -69,7 +69,7 @@ export function StatsPanel({ activeStoryId }: { activeStoryId: number | null }) 
       <div className="card">
         <h2 className="font-display text-2xl mb-4">Vault Stats</h2>
         {stats ? (
-          <div className="grid grid-cols-3 gap-4 text-center">
+          <div className="grid grid-cols-3 gap-2 sm:gap-4 text-center">
             <Stat label="Files" value={stats.files} />
             <Stat label="Chunks" value={stats.chunks} />
             <Stat label="Vectors" value={stats.vec_rows} />
@@ -127,7 +127,7 @@ export function StatsPanel({ activeStoryId }: { activeStoryId: number | null }) 
 function Stat(props: { label: string; value: number }) {
   return (
     <div>
-      <div className="font-display text-3xl text-tealBright">
+      <div className="font-display text-xl sm:text-3xl text-tealBright break-all">
         {props.value.toLocaleString()}
       </div>
       <div className="text-xs text-muted uppercase tracking-wide">{props.label}</div>

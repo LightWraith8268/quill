@@ -201,7 +201,7 @@ export function ChatPanel({ storyId }: Props) {
   }
 
   return (
-    <div className="max-w-5xl mx-auto h-full grid grid-rows-[auto,1fr,auto] gap-3">
+    <div className="max-w-5xl mx-auto h-full grid grid-rows-[auto,1fr,auto] gap-2 sm:gap-3">
       {story && <StoryConfig story={story} onUpdated={setStory} />}
 
       <div ref={scrollRef} className="card overflow-auto space-y-4">
@@ -299,9 +299,9 @@ export function ChatPanel({ storyId }: Props) {
 
       <div className="card">
         {storyId && <PinnedContext storyId={storyId} />}
-        <div className="flex items-center gap-2 mb-2">
+        <div className="flex flex-wrap items-center gap-2 mb-2">
           <select
-            className="input"
+            className="input flex-1 min-w-0"
             value={agent}
             onChange={(e) => setAgent(e.target.value as AgentSelection)}
           >
@@ -421,7 +421,13 @@ function MessageBubble({
 }: BubbleProps) {
   const mine = m.role === "user";
   const [hover, setHover] = useState(false);
+  const [isCoarsePointer, setIsCoarsePointer] = useState(false);
   const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    setIsCoarsePointer(window.matchMedia("(pointer: coarse)").matches);
+  }, []);
   const [editDraft, setEditDraft] = useState(m.content);
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -455,7 +461,7 @@ function MessageBubble({
       }}
     >
       <div className="relative max-w-[85%]">
-        {hover && supportsActions && !isStreaming && !isDisabled && !editing && (
+        {(hover || isCoarsePointer) && supportsActions && !isStreaming && !isDisabled && !editing && (
           <div className={`absolute -top-7 ${mine ? "right-0" : "left-0"} flex gap-1 z-10`}>
             {mine ? (
               <button
@@ -501,7 +507,7 @@ function MessageBubble({
         )}
 
         <div
-          className={`rounded-lg px-4 py-3 text-sm leading-relaxed ${
+          className={`rounded-lg px-3 py-2 sm:px-4 sm:py-3 text-sm leading-relaxed ${
             mine
               ? "bg-teal/30 text-paper"
               : "bg-paper/40 border border-bg/10 dark:bg-bg/60 dark:border-muted/20"

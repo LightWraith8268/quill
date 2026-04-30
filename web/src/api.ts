@@ -171,6 +171,32 @@ export const api = {
     return req<UsageResponse>(`/usage${tail ? "?" + tail : ""}`);
   },
   usageTotals: () => req<UsageTotals>("/usage/totals"),
+  exportStory: async (storyId: number): Promise<{ filename: string; bytes: number }> => {
+    const t = auth.get();
+    const headers: Record<string, string> = {};
+    if (t) headers.Authorization = `Bearer ${t}`;
+    const res = await fetch(`/api/stories/${storyId}/export`, { headers });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`${res.status}: ${text}`);
+    }
+    // Try to parse filename from Content-Disposition; fall back to a default.
+    let filename = `story-${storyId}.json`;
+    const disp = res.headers.get("Content-Disposition") ?? "";
+    const m = disp.match(/filename="?([^"]+)"?/i);
+    if (m && m[1]) filename = m[1];
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    // Defer revoke so download has time to start in all browsers.
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return { filename, bytes: blob.size };
+  },
 };
 
 export type UsageEvent = {

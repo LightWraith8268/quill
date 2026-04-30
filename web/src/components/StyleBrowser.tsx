@@ -80,7 +80,7 @@ export function StyleBrowser() {
   }, [active]);
 
   return (
-    <div className="max-w-6xl mx-auto grid grid-cols-[260px,1fr] gap-4 h-full">
+    <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-[260px,1fr] gap-3 md:gap-4 h-full">
       <aside className="card overflow-auto space-y-5">
         <div>
           <h3 className="font-display text-lg mb-2">Base profile</h3>

@@ -10,8 +10,35 @@ import {
 } from "../api.ts";
 import { DiffView } from "./DiffView.tsx";
 import { MarkdownView } from "./MarkdownView.tsx";
+import { MarkdownEditor } from "./MarkdownEditor.tsx";
 import { recentFiles } from "../recents.ts";
 import { RecentFiles } from "./RecentFiles.tsx";
+
+const WRITABLE_PREFIXES = ["Books/", "Story Ideas/", "Uncensored/"];
+
+function isEditablePath(path: string | null): boolean {
+  if (!path) return false;
+  if (!/\.(md|markdown)$/i.test(path)) return false;
+  return WRITABLE_PREFIXES.some((p) => path.startsWith(p));
+}
+
+function useIsDarkTheme(): boolean {
+  const [isDark, setIsDark] = useState(() =>
+    typeof document !== "undefined"
+      ? document.documentElement.classList.contains("dark")
+      : false,
+  );
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const root = document.documentElement;
+    const observer = new MutationObserver(() => {
+      setIsDark(root.classList.contains("dark"));
+    });
+    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+  return isDark;
+}
 
 const PENDING_KEY = "quill.vaultPending";
 
@@ -36,6 +63,10 @@ export function VaultBrowser() {
     () => new Set(),
   );
   const [err, setErr] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [dirtyContent, setDirtyContent] = useState("");
+  const [saving, setSaving] = useState(false);
+  const isDark = useIsDarkTheme();
 
   useEffect(() => {
     api.vaultTree().then(setTree).catch((e: Error) => setErr(e.message));
@@ -77,7 +108,42 @@ export function VaultBrowser() {
       .catch(() => {});
     setComparison(null);
     setSelectedDrafts(new Set());
+    setEditing(false);
+    setDirtyContent("");
   }, [activePath]);
+
+  const isDirty = editing && file !== null && dirtyContent !== file.content;
+  const canEdit = isEditablePath(activePath);
+
+  const beginEdit = () => {
+    if (!file || !canEdit) return;
+    setDirtyContent(file.content);
+    setEditing(true);
+  };
+
+  const cancelEdit = () => {
+    setEditing(false);
+    setDirtyContent("");
+  };
+
+  const saveEdit = async () => {
+    if (!file || !activePath || !editing) return;
+    setSaving(true);
+    setErr(null);
+    try {
+      await api.vaultWrite(activePath, dirtyContent, "auto: editor save");
+      const fresh = await api.vaultFile(activePath);
+      setFile(fresh);
+      const r = await api.draftsList(activePath);
+      setDrafts(r.drafts);
+      setEditing(false);
+      setDirtyContent("");
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const toggleDir = (path: string) => {
     setOpenDirs((cur) => {
@@ -232,6 +298,48 @@ export function VaultBrowser() {
                 {(file.bytes / 1024).toFixed(1)} KB · last modified{" "}
                 {new Date(file.mtime).toLocaleString()}
               </span>
+              {isDirty && (
+                <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+                  ● unsaved
+                </span>
+              )}
+              <span className="ml-auto flex gap-2">
+                {!editing && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost text-xs"
+                    onClick={beginEdit}
+                    disabled={!canEdit}
+                    title={
+                      canEdit
+                        ? "Edit this file"
+                        : "Read-only (only Books/, Story Ideas/, Uncensored/ markdown is editable)"
+                    }
+                  >
+                    Edit
+                  </button>
+                )}
+                {editing && (
+                  <>
+                    <button
+                      type="button"
+                      className="btn btn-primary text-xs"
+                      onClick={saveEdit}
+                      disabled={saving || !isDirty}
+                    >
+                      {saving ? "Saving…" : "Save (snapshot first)"}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost text-xs"
+                      onClick={cancelEdit}
+                      disabled={saving}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                )}
+              </span>
             </div>
             {file.frontmatter && (
               <details className="text-xs">
@@ -239,7 +347,16 @@ export function VaultBrowser() {
                 <pre className="mt-2 font-mono">{JSON.stringify(file.frontmatter, null, 2)}</pre>
               </details>
             )}
-            <FileContent content={file.content} onWikiClick={followWiki} />
+            {editing ? (
+              <MarkdownEditor
+                initialContent={file.content}
+                onChange={setDirtyContent}
+                onSaveShortcut={saveEdit}
+                theme={isDark ? "dark" : "light"}
+              />
+            ) : (
+              <FileContent content={file.content} onWikiClick={followWiki} />
+            )}
 
             <div className="border-t border-muted/20 pt-3 space-y-2">
               <h3 className="font-display text-lg">Snapshots</h3>

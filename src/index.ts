@@ -8,6 +8,9 @@ import { runMcp } from "./mcp.ts";
 import { runTunnel } from "./tunnel.ts";
 import { startWatcher } from "./watcher.ts";
 import { usageRollup } from "./usage.ts";
+import { buildStoryExport } from "./export.ts";
+import { writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
 
 const HELP = `quill — writing RAG
 
@@ -28,6 +31,7 @@ Usage:
   quill mcp                                  Run MCP stdio server (for Claude Code)
   quill tunnel                               Run cloudflared tunnel (cloudflared/config.yml)
   quill usage [--story N] [--days 7]         Token usage + approx cost rollup
+  quill export <storyId> [--out path]        Export full story bundle as JSON
 `;
 
 function arg(rest: string[], flag: string): string | undefined {
@@ -188,6 +192,31 @@ async function main(): Promise<void> {
         days && Number.isFinite(days) ? Date.now() - days * 86_400_000 : undefined;
       const rollup = usageRollup(db, { storyId, since });
       console.log(JSON.stringify(rollup, null, 2));
+      return;
+    }
+    case "export": {
+      const idArg = rest[0];
+      if (!idArg || idArg.startsWith("--")) {
+        console.error("export: storyId required");
+        process.exit(2);
+      }
+      const storyId = Number(idArg);
+      if (!Number.isFinite(storyId)) {
+        console.error(`export: invalid storyId "${idArg}"`);
+        process.exit(2);
+      }
+      const db = openDb(cfg);
+      const { filename, payload } = await buildStoryExport(cfg, db, storyId);
+      const outArg = arg(rest, "--out");
+      const outPath = resolve(process.cwd(), outArg ?? filename);
+      await writeFile(outPath, payload, "utf-8");
+      console.log(
+        JSON.stringify(
+          { ok: true, path: outPath, bytes: Buffer.byteLength(payload, "utf-8") },
+          null,
+          2
+        )
+      );
       return;
     }
     default:

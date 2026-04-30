@@ -97,7 +97,7 @@ export default function App() {
           API unreachable: {bootError}
         </div>
       )}
-      <main className="flex-1 overflow-auto p-6">
+      <main className="flex-1 overflow-auto p-3 sm:p-6">
         {tab === "chat" && <ChatPanel storyId={activeStoryId} />}
         {tab === "workflows" &&
           (activeStoryId ? (

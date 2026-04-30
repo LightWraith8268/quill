@@ -43,7 +43,7 @@ export function LoreBrowser() {
   };
 
   return (
-    <div className="grid grid-cols-[320px,1fr] gap-4 h-full max-w-[1500px] mx-auto">
+    <div className="grid grid-cols-1 md:grid-cols-[320px,1fr] gap-3 md:gap-4 h-full max-w-[1500px] mx-auto">
       <aside className="card overflow-auto flex flex-col">
         <h3 className="font-display text-lg mb-2">
           Entities <span className="text-muted text-sm">({entities.length})</span>

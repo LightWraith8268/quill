@@ -16,6 +16,21 @@
     width: 8px;
     height: 8px;
   }
+  @media (max-width: 640px) {
+    ::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+    body {
+      line-height: 1.4;
+    }
+  }
+  @media (pointer: coarse) {
+    ::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+  }
   ::-webkit-scrollbar-thumb {
     background: #c9c4b8;
     border-radius: 4px;

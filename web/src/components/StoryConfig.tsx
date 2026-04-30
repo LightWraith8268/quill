@@ -15,6 +15,8 @@ export function StoryConfig({ story, onUpdated }: Props) {
   const [bases, setBases] = useState<StyleProfile[]>([]);
   const [genres, setGenres] = useState<StyleProfile[]>([]);
   const [busy, setBusy] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportNote, setExportNote] = useState<string | null>(null);
 
   useEffect(() => {
     api.styleList().then((r) => setBases(r.styles)).catch(() => {});
@@ -28,6 +30,22 @@ export function StoryConfig({ story, onUpdated }: Props) {
       onUpdated(updated);
     } finally {
       setBusy(false);
+    }
+  };
+
+  const doExport = async () => {
+    setExporting(true);
+    setExportNote(null);
+    try {
+      const { filename, bytes } = await api.exportStory(story.id);
+      const kb = (bytes / 1024).toFixed(1);
+      setExportNote(`Saved ${filename} (${kb} KB)`);
+      setTimeout(() => setExportNote(null), 4000);
+    } catch (e) {
+      setExportNote(`Export failed: ${e instanceof Error ? e.message : String(e)}`);
+      setTimeout(() => setExportNote(null), 6000);
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -92,6 +110,16 @@ export function StoryConfig({ story, onUpdated }: Props) {
             );
           })}
         </div>
+      </div>
+      <div className="flex items-center gap-2 ml-auto" title="Export this story as a JSON bundle">
+        <button
+          onClick={doExport}
+          disabled={exporting}
+          className="px-2 py-0.5 rounded text-xs border border-tealBright/60 text-tealBright hover:bg-tealBright/10 disabled:opacity-50"
+        >
+          {exporting ? "Exporting…" : "Export"}
+        </button>
+        {exportNote && <span className="text-xs text-muted">{exportNote}</span>}
       </div>
     </div>
   );
