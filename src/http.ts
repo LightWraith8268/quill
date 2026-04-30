@@ -57,6 +57,7 @@ import { compileStory } from "./compile.ts";
 import { clipUrl } from "./research.ts";
 import { buildGlossary } from "./glossary.ts";
 import { branchStory } from "./branches.ts";
+import { buildBeats, loadPronunciationMap, savePronunciationMap } from "./beats.ts";
 import {
   listGoals,
   upsertGoal,
@@ -798,6 +799,26 @@ export function buildApp(cfg: Config) {
     } catch (e) {
       return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
     }
+  });
+
+  app.get("/api/stories/:id/beats", async (c) => {
+    const id = Number(c.req.param("id"));
+    try {
+      const r = await buildBeats(cfg, db, id);
+      return c.json(r);
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 404);
+    }
+  });
+
+  app.get("/api/pronunciation", async (c) => {
+    return c.json(await loadPronunciationMap(cfg));
+  });
+
+  app.put("/api/pronunciation", async (c) => {
+    const map = (await c.req.json().catch(() => ({}))) as Record<string, string>;
+    await savePronunciationMap(cfg, map);
+    return c.json({ ok: true });
   });
 
   app.get("/api/stories/:id/glossary", async (c) => {

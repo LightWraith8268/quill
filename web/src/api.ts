@@ -234,6 +234,11 @@ export const api = {
     req<{ days: DailyWordRow[] }>(
       `/stories/${storyId}/daylog?days=${days}`
     ),
+  storyBeats: (storyId: number) =>
+    req<{ chapters: ChapterBeats[] }>(`/stories/${storyId}/beats`),
+  pronunciationGet: () => req<Record<string, string>>("/pronunciation"),
+  pronunciationSet: (map: Record<string, string>) =>
+    req<{ ok: boolean }>("/pronunciation", { method: "PUT", body: map }),
   compileStory: async (
     storyId: number,
     format: "md" | "html" | "docx"
@@ -421,6 +426,18 @@ export type TimeSessionRow = {
   seconds: number;
   file_path: string | null;
 };
+export type ChapterBeats = {
+  path: string;
+  title: string;
+  words: number;
+  dialogueDensity: number;
+  actionDensity: number;
+  emphasisDensity: number;
+  avgSentenceLen: number;
+  sentenceVariance: number;
+  intensity: number;
+};
+
 export type DailyWordRow = {
   id: number;
   story_id: number;

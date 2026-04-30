@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, auth, type ReindexResult, type Stats } from "../api.ts";
 import { WordCountDashboard } from "./WordCountDashboard.tsx";
 import { WritingDashboard } from "./WritingDashboard.tsx";
+import { BeatsHeatmap } from "./BeatsHeatmap.tsx";
 
 type ProbeResult = { ok: boolean; latencyMs: number; error?: string };
 type DbProbe = { ok: boolean; sizeBytes: number; error?: string };
@@ -120,6 +121,7 @@ export function StatsPanel({ activeStoryId }: { activeStoryId: number | null }) 
         <>
           <WritingDashboard storyId={activeStoryId} />
           <WordCountDashboard storyId={activeStoryId} />
+          <BeatsHeatmap storyId={activeStoryId} />
         </>
       )}
 

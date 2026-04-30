@@ -13,6 +13,7 @@ import { MarkdownView } from "./MarkdownView.tsx";
 import { MarkdownEditor, type MarkdownEditorHandle } from "./MarkdownEditor.tsx";
 import { InlineRewriteModal } from "./InlineRewriteModal.tsx";
 import { lintSummary } from "../editor/linter.ts";
+import { readAloud, stopReading } from "../tts.ts";
 import { inlineContinueStream } from "../api.ts";
 import { recentFiles } from "../recents.ts";
 import { RecentFiles } from "./RecentFiles.tsx";
@@ -318,6 +319,20 @@ export function VaultBrowser() {
                   ● unsaved
                 </span>
               )}
+              <button
+                onClick={() => readAloud(file.content.slice(0, 6000)).catch((e: Error) => setErr(e.message))}
+                className="btn btn-ghost text-xs"
+                title="Read aloud (browser TTS)"
+              >
+                ▶ read
+              </button>
+              <button
+                onClick={() => stopReading()}
+                className="btn btn-ghost text-xs"
+                title="Stop reading"
+              >
+                ■
+              </button>
               <span className="ml-auto flex gap-2">
                 {!editing && (
                   <button
