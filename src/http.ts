@@ -40,6 +40,8 @@ import {
 import { checkHealth } from "./health.ts";
 import { logError, recentErrors } from "./errlog.ts";
 import { listUsageEvents, usageRollup } from "./usage.ts";
+import { checkVoice } from "./voice.ts";
+import { runEnsemble } from "./ensemble.ts";
 import { buildStoryExport } from "./export.ts";
 
 const SearchBody = z.object({
@@ -104,6 +106,16 @@ const VaultInsertBody = z.object({
   mode: z.enum(["append", "prepend", "at-line"]),
   line: z.number().int().positive().optional(),
   snapshotNote: z.string().optional(),
+});
+
+const VoiceCheckBody = z.object({
+  text: z.string().min(1),
+  seriesPath: z.string().optional(),
+});
+
+const EnsembleBody = z.object({
+  message: z.string().min(1),
+  agents: z.array(z.enum(["claude", "codex", "gemini"])).optional(),
 });
 
 export function buildApp(cfg: Config) {
@@ -541,6 +553,66 @@ export function buildApp(cfg: Config) {
       const status = msg.includes("not found") ? 404 : 500;
       return c.json({ error: msg }, status);
     }
+  });
+
+  // ===== Voice fingerprint =====
+
+  app.post("/api/voice/check", async (c) => {
+    const parsed = VoiceCheckBody.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return c.json({ error: "bad request", issues: parsed.error.flatten() }, 400);
+    }
+    try {
+      const result = await checkVoice(cfg, db, parsed.data.text, {
+        seriesPath: parsed.data.seriesPath,
+      });
+      return c.json(result);
+    } catch (e) {
+      logError("http.voice.check", e);
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
+    }
+  });
+
+  // ===== Ensemble (multi-agent parallel chat) =====
+
+  app.post("/api/stories/:id/ensemble", async (c) => {
+    const id = Number(c.req.param("id"));
+    const story = getStory(db, id);
+    if (!story) return c.json({ error: "story not found" }, 404);
+    const parsed = EnsembleBody.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return c.json({ error: "bad request", issues: parsed.error.flatten() }, 400);
+    }
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const enc = new TextEncoder();
+        const send = (event: string, data: unknown): void => {
+          controller.enqueue(
+            enc.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+          );
+        };
+        try {
+          for await (const ev of runEnsemble(cfg, db, {
+            storyId: id,
+            message: parsed.data.message,
+            agents: parsed.data.agents,
+          })) {
+            send(ev.type, ev);
+          }
+        } catch (e) {
+          send("error", { error: e instanceof Error ? e.message : String(e) });
+        } finally {
+          controller.close();
+        }
+      },
+    });
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+      },
+    });
   });
 
   // ===== Workflows =====

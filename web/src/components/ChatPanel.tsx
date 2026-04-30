@@ -16,6 +16,7 @@ import { StoryConfig } from "./StoryConfig.tsx";
 import { MarkdownView } from "./MarkdownView.tsx";
 import { PinnedContext } from "./PinnedContext.tsx";
 import { InsertModal } from "./InsertModal.tsx";
+import { EnsemblePanel } from "./EnsemblePanel.tsx";
 import { usePins, clearPins } from "../pins.ts";
 
 type Props = {
@@ -45,6 +46,7 @@ export function ChatPanel({ storyId }: Props) {
   const [regenStreamText, setRegenStreamText] = useState("");
   const [insertingFromId, setInsertingFromId] = useState<number | null>(null);
   const [insertOk, setInsertOk] = useState<string | null>(null);
+  const [ensemblePrompt, setEnsemblePrompt] = useState<string | null>(null);
   const { formatForPrompt } = usePins(storyId ?? 0);
   const turnStartRef = useRef<number>(0);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -297,6 +299,24 @@ export function ChatPanel({ storyId }: Props) {
         );
       })()}
 
+      {ensemblePrompt !== null && storyId && (
+        <EnsemblePanel
+          storyId={storyId}
+          prompt={ensemblePrompt}
+          onClose={async () => {
+            setEnsemblePrompt(null);
+            // Refresh chat history (ensemble persists 3 messages)
+            try {
+              const r = await api.storyMessages(storyId);
+              setMessages(r.messages);
+              refreshUsage(storyId);
+            } catch {
+              /* ignore */
+            }
+          }}
+        />
+      )}
+
       <div className="card">
         {storyId && <PinnedContext storyId={storyId} />}
         <div className="flex flex-wrap items-center gap-2 mb-2">
@@ -328,11 +348,22 @@ export function ChatPanel({ storyId }: Props) {
           }}
           disabled={busy}
         />
-        <div className="mt-2 flex">
+        <div className="mt-2 flex gap-2">
+          <button
+            onClick={() => {
+              if (!draft.trim() || busy) return;
+              setEnsemblePrompt(draft.trim());
+            }}
+            disabled={busy || !draft.trim()}
+            className="btn btn-ghost text-xs ml-auto"
+            title="Run all 3 agents on this prompt side-by-side"
+          >
+            Ensemble
+          </button>
           <button
             onClick={send}
             disabled={busy || !draft.trim()}
-            className="btn btn-primary ml-auto"
+            className="btn btn-primary"
           >
             {busy ? "Streaming…" : "Send"}
           </button>

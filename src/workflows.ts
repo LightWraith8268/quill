@@ -259,6 +259,83 @@ export const WORKFLOWS: WorkflowDef[] = [
       ].join("\n");
     },
   },
+  {
+    id: "bible_update_proposal",
+    title: "Bible Update Proposal",
+    description:
+      "After a chapter is drafted, propose additions to the series CHARACTER_BIBLE / style overlays for newly earned beats, lexicon, motifs. Best with Claude.",
+    agent: "claude",
+    fields: [
+      {
+        name: "chapter_text",
+        label: "Chapter / scene text",
+        kind: "textarea",
+        rows: 14,
+        required: true,
+        placeholder: "Paste the just-drafted chapter or scene here.",
+      },
+      {
+        name: "current_bible",
+        label: "Current bible content (optional, paste relevant excerpts)",
+        kind: "textarea",
+        rows: 6,
+        placeholder:
+          "Paste the relevant character / style sections so I can compare. Skip for a one-shot suggestion.",
+      },
+      {
+        name: "characters",
+        label: "Characters featured (comma-separated)",
+        kind: "text",
+        placeholder: "Riko, Kira, Vesper",
+      },
+    ],
+    buildPrompt: (i): string => {
+      const lines: (string | undefined)[] = [
+        `BIBLE UPDATE PROPOSAL — diagnose, do not rewrite the bible.`,
+        ``,
+        `Read the chapter below. Compare against the active style profile, the series CHARACTER_BIBLE.md (in context), and the bible excerpts the user pasted. Identify ONLY items that:`,
+        `- Survived the drafting (not provisional / draft-only),`,
+        `- Are NEW (not already present in the active bible / style overlays),`,
+        `- Are load-bearing enough to deserve canonization.`,
+        ``,
+        `Categories to scan:`,
+        `1. **Earned voice beats** per character (e.g., a tic landed, a register shifted, a callback solidified).`,
+        `2. **Lexicon entries** — in-world terms or specific phrasings now established.`,
+        `3. **Motifs** that became load-bearing in the chapter.`,
+        `4. **Relationship beats** — bond changes, register shifts, new shorthand.`,
+        `5. **Constraints / costs** — system rules clarified or new failure modes shown.`,
+        ``,
+        i.characters?.trim() ? `Characters featured: ${i.characters.trim()}` : ``,
+        ``,
+        `Output a structured Markdown proposal with this exact shape:`,
+        ``,
+        `## Proposed additions`,
+        `### Character: <Name>`,
+        `- **Earned beat (Book N):** <one-line beat>`,
+        `- **Voice rule:** <one-line rule, only if a NEW rule>`,
+        ``,
+        `### Series lexicon`,
+        `- <new term> — <gloss>`,
+        ``,
+        `### Series motifs`,
+        `- <motif> — <one-line description>`,
+        ``,
+        `### Relationship updates`,
+        `- <Char A> ↔ <Char B>: <change>`,
+        ``,
+        `### System rules / constraints`,
+        `- <rule>`,
+        ``,
+        `Skip any section with no new items. End with a 1-paragraph summary of how confident you are these survive future revision (high / medium / low).`,
+        ``,
+        `=== CHAPTER / SCENE ===`,
+        i.chapter_text ?? "",
+        ``,
+        i.current_bible?.trim() ? `=== CURRENT BIBLE EXCERPTS ===\n${i.current_bible.trim()}` : ``,
+      ];
+      return lines.filter((l): l is string => typeof l === "string").join("\n");
+    },
+  },
 ];
 
 export function listWorkflows() {

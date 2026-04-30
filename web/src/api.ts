@@ -132,6 +132,11 @@ export const api = {
     req<{ series: string; characters: CharacterDef[] }>(
       `/characters/${encodeURIComponent(series)}`
     ),
+  voiceCheck: (text: string, seriesPath?: string) =>
+    req<VoiceCheckResult>("/voice/check", {
+      method: "POST",
+      body: { text, seriesPath },
+    }),
   storyDelete: (id: number) =>
     req<{ ok: boolean }>(`/stories/${id}`, { method: "DELETE" }),
   storyMessages: (id: number) =>
@@ -273,6 +278,20 @@ export type DraftMeta = {
 };
 export type DraftFull = DraftMeta & { content: string };
 
+export type VoiceCheckResult = {
+  score: number;
+  band: "drift" | "off-voice" | "matching" | "strong-match";
+  centroidSampleSize: number;
+  topSimilar: {
+    path: string;
+    headingPath: string | null;
+    startLine: number;
+    endLine: number;
+    similarity: number;
+    preview: string;
+  }[];
+};
+
 export type CharacterDef = {
   name: string;
   role: string | null;
@@ -411,6 +430,18 @@ export async function* regenerateStream(
   opts: RegenerateOpts
 ): AsyncGenerator<{ event: string; data: unknown }, void, void> {
   const reader = await openSse(`/api/stories/${storyId}/regenerate`, opts);
+  yield* parseSse(reader);
+}
+
+export async function* ensembleStream(
+  storyId: number,
+  message: string,
+  agents?: AgentName[]
+): AsyncGenerator<{ event: string; data: unknown }, void, void> {
+  const reader = await openSse(`/api/stories/${storyId}/ensemble`, {
+    message,
+    agents,
+  });
   yield* parseSse(reader);
 }
 
