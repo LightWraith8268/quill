@@ -445,3 +445,29 @@ export async function* ensembleStream(
   yield* parseSse(reader);
 }
 
+export async function* inlineEditStream(
+  selection: string,
+  instruction: string,
+  storyId?: number
+): AsyncGenerator<{ event: string; data: unknown }, void, void> {
+  const reader = await openSse(`/api/edit/inline`, {
+    selection,
+    instruction,
+    storyId,
+  });
+  yield* parseSse(reader);
+}
+
+export async function* inlineContinueStream(
+  precedingText: string,
+  storyId?: number,
+  length?: "sentence" | "paragraph" | "scene"
+): AsyncGenerator<{ event: string; data: unknown }, void, void> {
+  const reader = await openSse(`/api/edit/continue`, {
+    precedingText,
+    storyId,
+    length,
+  });
+  yield* parseSse(reader);
+}
+

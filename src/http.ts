@@ -42,6 +42,7 @@ import { logError, recentErrors } from "./errlog.ts";
 import { listUsageEvents, usageRollup } from "./usage.ts";
 import { checkVoice } from "./voice.ts";
 import { runEnsemble } from "./ensemble.ts";
+import { inlineEditStream, inlineContinueStream } from "./inline.ts";
 import { buildStoryExport } from "./export.ts";
 
 const SearchBody = z.object({
@@ -116,6 +117,18 @@ const VoiceCheckBody = z.object({
 const EnsembleBody = z.object({
   message: z.string().min(1),
   agents: z.array(z.enum(["claude", "codex", "gemini"])).optional(),
+});
+
+const InlineEditBody = z.object({
+  storyId: z.number().int().positive().optional(),
+  selection: z.string().min(1),
+  instruction: z.string().min(1),
+});
+
+const InlineContinueBody = z.object({
+  storyId: z.number().int().positive().optional(),
+  precedingText: z.string().min(1),
+  length: z.enum(["sentence", "paragraph", "scene"]).optional(),
 });
 
 export function buildApp(cfg: Config) {
@@ -571,6 +584,52 @@ export function buildApp(cfg: Config) {
       logError("http.voice.check", e);
       return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
     }
+  });
+
+  // ===== Inline editor AI (Cmd+K rewrite, Tab continue) =====
+
+  const inlineSse = (
+    gen: AsyncGenerator<string, void, void>
+  ): Response => {
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const enc = new TextEncoder();
+        const send = (event: string, data: unknown): void => {
+          controller.enqueue(
+            enc.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+          );
+        };
+        try {
+          for await (const chunk of gen) {
+            send("delta", { text: chunk });
+          }
+          send("done", {});
+        } catch (e) {
+          send("error", { error: e instanceof Error ? e.message : String(e) });
+        } finally {
+          controller.close();
+        }
+      },
+    });
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+      },
+    });
+  };
+
+  app.post("/api/edit/inline", async (c) => {
+    const parsed = InlineEditBody.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return c.json({ error: "bad request", issues: parsed.error.flatten() }, 400);
+    return inlineSse(inlineEditStream(cfg, db, parsed.data));
+  });
+
+  app.post("/api/edit/continue", async (c) => {
+    const parsed = InlineContinueBody.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return c.json({ error: "bad request", issues: parsed.error.flatten() }, 400);
+    return inlineSse(inlineContinueStream(cfg, db, parsed.data));
   });
 
   // ===== Ensemble (multi-agent parallel chat) =====

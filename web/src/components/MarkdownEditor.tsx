@@ -2,7 +2,7 @@
 // Wraps EditorView with markdown lang + line wrapping; switches to oneDark
 // when dark theme is active.
 
-import { useEffect, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { EditorState, Compartment } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
@@ -10,26 +10,42 @@ import { markdown } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { basicSetup } from "codemirror";
+import { antiPatternLinter } from "../editor/linter.ts";
+
+export type MarkdownEditorHandle = {
+  replaceRange: (from: number, to: number, text: string) => void;
+  insertAt: (pos: number, text: string) => void;
+  getCursor: () => number;
+};
 
 type Props = {
   initialContent: string;
   onChange: (content: string) => void;
   onSaveShortcut?: () => void;
+  onCommandK?: (selection: string, replaceRange: { from: number; to: number }) => void;
+  onTabContinue?: (precedingText: string, cursorPos: number) => void;
   readOnly?: boolean;
   theme?: "light" | "dark";
 };
 
-export function MarkdownEditor({
-  initialContent,
-  onChange,
-  onSaveShortcut,
-  readOnly = false,
-  theme,
-}: Props) {
+export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function MarkdownEditor(
+  {
+    initialContent,
+    onChange,
+    onSaveShortcut,
+    onCommandK,
+    onTabContinue,
+    readOnly = false,
+    theme,
+  }: Props,
+  externalRef
+) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
   const onSaveRef = useRef(onSaveShortcut);
+  const onCommandKRef = useRef(onCommandK);
+  const onTabContinueRef = useRef(onTabContinue);
   const themeCompartmentRef = useRef(new Compartment());
   const readOnlyCompartmentRef = useRef(new Compartment());
 
@@ -40,6 +56,12 @@ export function MarkdownEditor({
   useEffect(() => {
     onSaveRef.current = onSaveShortcut;
   }, [onSaveShortcut]);
+  useEffect(() => {
+    onCommandKRef.current = onCommandK;
+  }, [onCommandK]);
+  useEffect(() => {
+    onTabContinueRef.current = onTabContinue;
+  }, [onTabContinue]);
 
   const resolvedTheme: "light" | "dark" =
     theme ??
@@ -60,6 +82,36 @@ export function MarkdownEditor({
           return true;
         },
       },
+      {
+        key: "Mod-k",
+        preventDefault: true,
+        run: (view) => {
+          if (!onCommandKRef.current) return false;
+          const sel = view.state.selection.main;
+          if (sel.from === sel.to) return false;
+          const text = view.state.doc.sliceString(sel.from, sel.to);
+          onCommandKRef.current(text, { from: sel.from, to: sel.to });
+          return true;
+        },
+      },
+      {
+        key: "Tab",
+        run: (view) => {
+          if (!onTabContinueRef.current) return false;
+          const sel = view.state.selection.main;
+          if (sel.from !== sel.to) return false; // only at single cursor
+          const pos = sel.from;
+          // Only when cursor sits at end of a non-empty line
+          const line = view.state.doc.lineAt(pos);
+          if (pos !== line.to) return false;
+          if (line.text.trim().length === 0) return false;
+          // Use up to 1500 chars before cursor as context
+          const start = Math.max(0, pos - 1500);
+          const preceding = view.state.doc.sliceString(start, pos);
+          onTabContinueRef.current(preceding, pos);
+          return true;
+        },
+      },
     ]);
 
     const updateListener = EditorView.updateListener.of((update) => {
@@ -77,6 +129,7 @@ export function MarkdownEditor({
         saveKeymap,
         markdown({ codeLanguages: languages }),
         EditorView.lineWrapping,
+        antiPatternLinter(),
         updateListener,
         themeCompartmentRef.current.of(
           resolvedTheme === "dark" ? oneDark : [],
@@ -131,10 +184,37 @@ export function MarkdownEditor({
     });
   }, [initialContent]);
 
+  useImperativeHandle(
+    externalRef,
+    () => ({
+      replaceRange: (from, to, text) => {
+        const view = viewRef.current;
+        if (!view) return;
+        view.dispatch({ changes: { from, to, insert: text } });
+        view.focus();
+      },
+      insertAt: (pos, text) => {
+        const view = viewRef.current;
+        if (!view) return;
+        view.dispatch({
+          changes: { from: pos, to: pos, insert: text },
+          selection: { anchor: pos + text.length },
+        });
+        view.focus();
+      },
+      getCursor: () => {
+        const view = viewRef.current;
+        if (!view) return 0;
+        return view.state.selection.main.head;
+      },
+    }),
+    []
+  );
+
   return (
     <div
       ref={hostRef}
       className="quill-md-editor border border-bg/10 dark:border-muted/20 rounded overflow-hidden"
     />
   );
-}
+});

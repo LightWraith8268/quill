@@ -1,7 +1,7 @@
 // Read-only vault tree + file viewer with frontmatter, wikilink resolution,
 // and per-file draft snapshots.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
   type DraftMeta,
@@ -10,7 +10,10 @@ import {
 } from "../api.ts";
 import { DiffView } from "./DiffView.tsx";
 import { MarkdownView } from "./MarkdownView.tsx";
-import { MarkdownEditor } from "./MarkdownEditor.tsx";
+import { MarkdownEditor, type MarkdownEditorHandle } from "./MarkdownEditor.tsx";
+import { InlineRewriteModal } from "./InlineRewriteModal.tsx";
+import { lintSummary } from "../editor/linter.ts";
+import { inlineContinueStream } from "../api.ts";
 import { recentFiles } from "../recents.ts";
 import { RecentFiles } from "./RecentFiles.tsx";
 
@@ -66,6 +69,13 @@ export function VaultBrowser() {
   const [editing, setEditing] = useState(false);
   const [dirtyContent, setDirtyContent] = useState("");
   const [saving, setSaving] = useState(false);
+  const editorRef = useRef<MarkdownEditorHandle | null>(null);
+  const [rewrite, setRewrite] = useState<{
+    selection: string;
+    range: { from: number; to: number };
+  } | null>(null);
+  const [continuing, setContinuing] = useState(false);
+  const [voiceScore, setVoiceScore] = useState<{ score: number; band: string } | null>(null);
   const isDark = useIsDarkTheme();
 
   useEffect(() => {
@@ -136,6 +146,11 @@ export function VaultBrowser() {
       setFile(fresh);
       const r = await api.draftsList(activePath);
       setDrafts(r.drafts);
+      // Voice score on save (passive — non-blocking)
+      api
+        .voiceCheck(dirtyContent.slice(0, 4000))
+        .then((v) => setVoiceScore({ score: v.score, band: v.band }))
+        .catch(() => {});
       setEditing(false);
       setDirtyContent("");
     } catch (e) {
@@ -348,12 +363,56 @@ export function VaultBrowser() {
               </details>
             )}
             {editing ? (
-              <MarkdownEditor
-                initialContent={file.content}
-                onChange={setDirtyContent}
-                onSaveShortcut={saveEdit}
-                theme={isDark ? "dark" : "light"}
-              />
+              <>
+                <div className="flex items-center gap-2 text-xs text-muted">
+                  <span>⌘K rewrite · Tab continue · ⌘S save</span>
+                  {(() => {
+                    const s = lintSummary(dirtyContent || file.content);
+                    if (s.total === 0) return <span className="text-tealBright ml-auto">✓ no anti-pattern hits</span>;
+                    return (
+                      <span className="ml-auto">
+                        {s.high > 0 && <span className="text-red-500">{s.high} high</span>}
+                        {s.medium > 0 && <span className="text-amber-500 ml-2">{s.medium} medium</span>}
+                        {s.low > 0 && <span className="text-muted ml-2">{s.low} low</span>}
+                      </span>
+                    );
+                  })()}
+                </div>
+                <MarkdownEditor
+                  ref={editorRef}
+                  initialContent={file.content}
+                  onChange={setDirtyContent}
+                  onSaveShortcut={saveEdit}
+                  onCommandK={(selection, range) =>
+                    setRewrite({ selection, range })
+                  }
+                  onTabContinue={async (preceding, cursorPos) => {
+                    if (continuing) return;
+                    setContinuing(true);
+                    try {
+                      const storyIdRaw = localStorage.getItem("quill.activeStoryId");
+                      const storyId = storyIdRaw ? Number(storyIdRaw) : undefined;
+                      let buf = "";
+                      let writePos = cursorPos;
+                      for await (const ev of inlineContinueStream(preceding, storyId, "paragraph")) {
+                        if (ev.event === "delta") {
+                          const data = ev.data as { text: string };
+                          buf += data.text;
+                          // Insert delta at the moving cursor
+                          editorRef.current?.insertAt(writePos, data.text);
+                          writePos += data.text.length;
+                        } else if (ev.event === "error") {
+                          setErr((ev.data as { error: string }).error);
+                          break;
+                        }
+                      }
+                    } finally {
+                      setContinuing(false);
+                    }
+                  }}
+                  theme={isDark ? "dark" : "light"}
+                />
+              </>
             ) : (
               <FileContent content={file.content} onWikiClick={followWiki} />
             )}
@@ -488,6 +547,31 @@ export function VaultBrowser() {
           </>
         )}
       </section>
+      {rewrite && (
+        <InlineRewriteModal
+          selection={rewrite.selection}
+          storyId={(() => {
+            const v = localStorage.getItem("quill.activeStoryId");
+            return v ? Number(v) : null;
+          })()}
+          onAccept={(replacement) => {
+            editorRef.current?.replaceRange(rewrite.range.from, rewrite.range.to, replacement);
+            setRewrite(null);
+          }}
+          onCancel={() => setRewrite(null)}
+        />
+      )}
+      {voiceScore && (
+        <div className="fixed bottom-4 right-4 z-40 px-3 py-2 rounded-full text-xs font-mono bg-bg/90 dark:bg-paper/90 text-paper dark:text-bg border border-tealBright/40 shadow-lg">
+          voice: {voiceScore.score.toFixed(2)} ({voiceScore.band})
+          <button
+            onClick={() => setVoiceScore(null)}
+            className="ml-2 text-muted hover:text-tealBright"
+          >
+            ×
+          </button>
+        </div>
+      )}
     </div>
   );
 }
