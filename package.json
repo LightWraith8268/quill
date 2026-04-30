@@ -1,0 +1,25 @@
+{
+  "name": "quill",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "reindex": "bun run src/index.ts reindex",
+    "search": "bun run src/index.ts search",
+    "stats": "bun run src/index.ts stats",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "hono": "^4.6.0",
+    "sqlite-vec": "^0.1.6",
+    "voyageai": "^0.0.4",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.6.0"
+  }
+}

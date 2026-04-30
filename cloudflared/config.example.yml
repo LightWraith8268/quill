@@ -1,0 +1,35 @@
+# Quill cloudflared tunnel config.
+# Copy to config.yml and fill in your values, then run `quill tunnel`.
+#
+# After:
+#   cloudflared tunnel login
+#   cloudflared tunnel create quill
+#   cloudflared tunnel route dns quill quill.<your-domain>
+#
+# the create command prints a UUID + path to a JSON credentials file.
+# Set both below.
+
+tunnel: <PASTE-TUNNEL-UUID-HERE>
+credentials-file: C:\Users\<you>\.cloudflared\<UUID>.json
+
+# Local origin = the Quill HTTP server (default 127.0.0.1:7878).
+# All API + SPA routes are served from one port.
+ingress:
+  - hostname: quill.example.com
+    service: http://127.0.0.1:7878
+    originRequest:
+      # The chat SSE stream can run for minutes; bump the no-data timeout.
+      noTLSVerify: false
+      connectTimeout: 30s
+      tlsTimeout: 30s
+      tcpKeepAlive: 30s
+      noHappyEyeballs: false
+      # Disable buffering so SSE deltas reach the browser immediately.
+      disableChunkedEncoding: false
+
+  # Catch-all: required as the last ingress rule.
+  - service: http_status:404
+
+# Optional logging
+loglevel: info
+transport-loglevel: warn
