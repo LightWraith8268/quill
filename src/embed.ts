@@ -38,7 +38,7 @@ async function call(
   pacer: Pacer,
   input: string[],
   inputType: EmbedInputType
-): Promise<number[][]> {
+): Promise<{ vectors: number[][]; tokens: number }> {
   if (!cfg.VOYAGE_API_KEY) {
     throw new Error("VOYAGE_API_KEY not set in .env");
   }
@@ -65,7 +65,10 @@ async function call(
     if (res.ok) {
       const json = (await res.json()) as VoyageResponse;
       json.data.sort((a, b) => a.index - b.index);
-      return json.data.map((d) => d.embedding);
+      return {
+        vectors: json.data.map((d) => d.embedding),
+        tokens: json.usage?.total_tokens ?? 0,
+      };
     }
 
     const text = await res.text();
@@ -85,10 +88,17 @@ async function call(
   }
 }
 
+export type EmbedUsageRecorder = (u: {
+  inputTokens: number;
+  outputTokens: number;
+  model?: string | null;
+}) => void;
+
 export async function embedBatch(
   cfg: Config,
   texts: string[],
-  inputType: EmbedInputType
+  inputType: EmbedInputType,
+  onUsage?: EmbedUsageRecorder
 ): Promise<{ embeddings: number[][]; tokens: number }> {
   const out: number[][] = new Array(texts.length);
   let totalTokens = 0;
@@ -127,11 +137,19 @@ export async function embedBatch(
     process.stdout.write(
       `\r[embed] batch ${batchNum} (${batch.length} chunks, ~${batchTokens} tok), ${remaining} remaining   `
     );
-    const vectors = await call(cfg, pacer, batch, inputType);
+    const { vectors, tokens: actualTokens } = await call(cfg, pacer, batch, inputType);
     for (let j = 0; j < vectors.length; j++) {
       out[indices[j]!] = vectors[j]!;
     }
-    totalTokens += batchTokens;
+    const reportedTokens = actualTokens > 0 ? actualTokens : batchTokens;
+    totalTokens += reportedTokens;
+    if (onUsage) {
+      onUsage({
+        inputTokens: reportedTokens,
+        outputTokens: 0,
+        model: cfg.EMBED_MODEL,
+      });
+    }
   }
   process.stdout.write("\n");
 

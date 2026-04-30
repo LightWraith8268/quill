@@ -145,6 +145,47 @@ export const api = {
   draftGet: (id: number) => req<DraftFull>(`/drafts/${id}`),
   draftDelete: (id: number) =>
     req<{ ok: boolean }>(`/drafts/${id}`, { method: "DELETE" }),
+  usage: (storyId?: number, since?: number) => {
+    const qs = new URLSearchParams();
+    if (storyId != null) qs.set("storyId", String(storyId));
+    if (since != null) qs.set("since", String(since));
+    const tail = qs.toString();
+    return req<UsageResponse>(`/usage${tail ? "?" + tail : ""}`);
+  },
+  usageTotals: () => req<UsageTotals>("/usage/totals"),
+};
+
+export type UsageEvent = {
+  id: number;
+  ts: number;
+  storyId: number | null;
+  agent: string;
+  model: string | null;
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens: number;
+  costUsd: number;
+  meta: Record<string, unknown> | null;
+};
+export type UsageRollupRow = {
+  agent: string;
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens: number;
+  totalTokens: number;
+  costUsd: number;
+  events: number;
+};
+export type UsageResponse = {
+  events: UsageEvent[];
+  totals: UsageRollupRow[];
+  summary: { tokens: number; costUsd: number; events: number };
+};
+export type UsageTotals = {
+  perAgent: UsageRollupRow[];
+  perDay: { day: string; tokens: number; costUsd: number }[];
+  perStory: { storyId: number | null; tokens: number; costUsd: number }[];
+  totals: { tokens: number; costUsd: number; events: number };
 };
 
 export type TreeNode = {

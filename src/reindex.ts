@@ -1,6 +1,9 @@
 // Reindex vault: walk → diff against files table → for changed files,
 // re-chunk → embed → upsert. Removes rows for deleted files.
 
+import { stat, readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { createHash } from "node:crypto";
 import type { Config } from "./config.ts";
 import type { DB } from "./db.ts";
 import { walkVault, type FileMeta } from "./walk.ts";
@@ -22,6 +25,12 @@ export type ReindexResult = {
   tokensEmbedded: number;
 };
 
+export type ReindexFileResult = {
+  filesChanged: number;
+  chunksWritten: number;
+  tokensEmbedded: number;
+};
+
 export async function reindex(
   cfg: Config,
   db: DB,
@@ -39,7 +48,6 @@ export async function reindex(
     dbFiles.set(row.path, row);
   }
 
-  // Decide what to (re)index
   const fsByPath = new Map(fsFiles.map((f) => [f.relPath, f]));
   const toIndex: FileMeta[] = [];
   const toDelete: number[] = [];
@@ -62,29 +70,43 @@ export async function reindex(
     `[reindex] changed=${toIndex.length} deleted=${toDelete.length} unchanged=${fsFiles.length - toIndex.length}`
   );
 
-  // Drop deleted files (cascades to chunks; vec rows must be cleaned manually)
-  for (const id of toDelete) deleteFileChunks(db, id);
+  for (const id of toDelete) deleteFileChunksById(db, id);
 
-  // For changed files, drop old chunks first
+  let totalChunks = 0;
+  let totalTokens = 0;
   for (const f of toIndex) {
-    const existing = dbFiles.get(f.relPath);
-    if (existing) deleteFileChunks(db, existing.id);
+    const r = await reindexFile(cfg, db, f.relPath, f);
+    totalChunks += r.chunksWritten;
+    totalTokens += r.tokensEmbedded;
   }
 
-  // Chunk all
-  type Pending = {
-    fileMeta: FileMeta;
-    fileId: number;
-    chunkText: string;
-    headingPath: string;
-    ord: number;
-    startLine: number;
-    endLine: number;
-    tokenCount: number;
-    tags: string;
+  console.log(`[reindex] done in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  return {
+    filesScanned: fsFiles.length,
+    filesChanged: toIndex.length,
+    filesDeleted: toDelete.length,
+    chunksWritten: totalChunks,
+    tokensEmbedded: totalTokens,
   };
-  const pending: Pending[] = [];
+}
 
+/**
+ * Reindex a single file: drops existing rows, re-chunks, embeds, inserts.
+ * Caller supplies the FileMeta (already statted/hashed/read).
+ */
+export async function reindexFile(
+  cfg: Config,
+  db: DB,
+  relPath: string,
+  fileMeta: FileMeta
+): Promise<ReindexFileResult> {
+  // Drop any existing rows for this path
+  const existing = db
+    .query<{ id: number }, [string]>("SELECT id FROM files WHERE path = ?")
+    .get(relPath);
+  if (existing) deleteFileChunksById(db, existing.id);
+
+  const fileTags = tagsFor(relPath, cfg).join(",");
   const upsertFile = db.prepare<
     { id: number },
     [string, number, number, string, number]
@@ -98,57 +120,28 @@ export async function reindex(
        indexed_at = excluded.indexed_at
      RETURNING id`
   );
-
-  const now = Date.now();
-  for (const f of toIndex) {
-    const fileTags = tagsFor(f.relPath, cfg).join(",");
-    const fileRow = upsertFile.get(
-      f.relPath,
-      f.mtimeMs,
-      f.size,
-      f.hash,
-      now
-    );
-    if (!fileRow) throw new Error(`upsert failed for ${f.relPath}`);
-    const fileId = fileRow.id;
-    const chunks = chunkMarkdown(f.content, {
-      chunkTokens: cfg.CHUNK_TOKENS,
-      overlap: cfg.CHUNK_OVERLAP,
-    });
-    for (const c of chunks) {
-      pending.push({
-        fileMeta: f,
-        fileId,
-        chunkText: c.content,
-        headingPath: c.headingPath,
-        ord: c.ord,
-        startLine: c.startLine,
-        endLine: c.endLine,
-        tokenCount: c.tokenCount,
-        tags: fileTags,
-      });
-    }
-  }
-
-  console.log(`[reindex] ${pending.length} chunks to embed`);
-  if (pending.length === 0) {
-    return {
-      filesScanned: fsFiles.length,
-      filesChanged: toIndex.length,
-      filesDeleted: toDelete.length,
-      chunksWritten: 0,
-      tokensEmbedded: 0,
-    };
-  }
-
-  const texts = pending.map((p) => p.chunkText);
-  const t1 = Date.now();
-  const { embeddings, tokens } = await embedBatch(cfg, texts, "document");
-  console.log(
-    `[reindex] embedded ${pending.length} chunks (~${tokens} tokens) in ${((Date.now() - t1) / 1000).toFixed(1)}s`
+  const fileRow = upsertFile.get(
+    relPath,
+    fileMeta.mtimeMs,
+    fileMeta.size,
+    fileMeta.hash,
+    Date.now()
   );
+  if (!fileRow) throw new Error(`upsert failed for ${relPath}`);
+  const fileId = fileRow.id;
 
-  // Insert chunks + vec rows in a single transaction
+  const chunks = chunkMarkdown(fileMeta.content, {
+    chunkTokens: cfg.CHUNK_TOKENS,
+    overlap: cfg.CHUNK_OVERLAP,
+  });
+
+  if (chunks.length === 0) {
+    return { filesChanged: 1, chunksWritten: 0, tokensEmbedded: 0 };
+  }
+
+  const texts = chunks.map((c) => c.content);
+  const { embeddings, tokens } = await embedBatch(cfg, texts, "document");
+
   const insertChunk = db.prepare<
     { id: number },
     [number, number, string, number, number, number, string, string]
@@ -162,17 +155,17 @@ export async function reindex(
   );
 
   const tx = db.transaction(() => {
-    for (let i = 0; i < pending.length; i++) {
-      const p = pending[i]!;
+    for (let i = 0; i < chunks.length; i++) {
+      const c = chunks[i]!;
       const row = insertChunk.get(
-        p.fileId,
-        p.ord,
-        p.headingPath || null as unknown as string,
-        p.startLine,
-        p.endLine,
-        p.tokenCount,
-        p.tags,
-        p.chunkText
+        fileId,
+        c.ord,
+        c.headingPath || (null as unknown as string),
+        c.startLine,
+        c.endLine,
+        c.tokenCount,
+        fileTags,
+        c.content
       );
       if (!row) throw new Error("chunk insert failed");
       insertVec.run(row.id, toFloat32Buffer(embeddings[i]!));
@@ -180,17 +173,50 @@ export async function reindex(
   });
   tx();
 
-  console.log(`[reindex] done in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
   return {
-    filesScanned: fsFiles.length,
-    filesChanged: toIndex.length,
-    filesDeleted: toDelete.length,
-    chunksWritten: pending.length,
+    filesChanged: 1,
+    chunksWritten: chunks.length,
     tokensEmbedded: tokens,
   };
 }
 
-function deleteFileChunks(db: DB, fileId: number): void {
+/**
+ * Convenience: stat + read + hash a single file by relPath, then reindex it.
+ * Used by the file watcher.
+ */
+export async function reindexPath(
+  cfg: Config,
+  db: DB,
+  relPath: string
+): Promise<ReindexFileResult> {
+  const absPath = join(cfg.VAULT_PATH, relPath);
+  const st = await stat(absPath);
+  const content = await readFile(absPath, "utf-8");
+  const hash = createHash("sha256").update(content).digest("hex");
+  const meta: FileMeta = {
+    absPath,
+    relPath,
+    mtimeMs: Math.floor(st.mtimeMs),
+    size: st.size,
+    hash,
+    content,
+  };
+  return reindexFile(cfg, db, relPath, meta);
+}
+
+/**
+ * Drop all rows (vec, chunks, files) for the file at relPath. No-op if missing.
+ */
+export function deleteFileByPath(db: DB, relPath: string): boolean {
+  const row = db
+    .query<{ id: number }, [string]>("SELECT id FROM files WHERE path = ?")
+    .get(relPath);
+  if (!row) return false;
+  deleteFileChunksById(db, row.id);
+  return true;
+}
+
+function deleteFileChunksById(db: DB, fileId: number): void {
   const ids = db
     .query<{ id: number }, [number]>("SELECT id FROM chunks WHERE file_id = ?")
     .all(fileId);

@@ -11,6 +11,7 @@ import { listMessages, appendMessage, type Message } from "./messages.ts";
 import { composeStyle } from "./style.ts";
 import { search, type SearchHit } from "./search.ts";
 import { pickAgent, streamFor, type AgentName, type AgentSelection } from "./agents/router.ts";
+import { makeRecorder } from "./usage.ts";
 
 const HISTORY_TURNS = 12;
 const LORE_HITS = 5;
@@ -58,17 +59,26 @@ export async function* runChat(
   });
 
   const built = await buildContext(cfg, db, story, history, req.message);
+  // Note: buildContext already recorded embed+rerank usage internally.
   const route = pickAgent(req.agent, req.message);
   yield { type: "context", usage: built.usage, agent: route.agent, routeReason: route.reason };
 
   const systemPrompt = built.systemPrompt;
   const userPrompt = req.message;
 
+  const agentRecorder = makeRecorder(db, route.agent, story.id);
+
   let full = "";
   try {
     for await (const chunk of streamFor(route.agent, userPrompt, {
       systemPrompt,
       cwd: cfg.VAULT_PATH,
+      onUsage: (u) => agentRecorder({
+        inputTokens: u.inputTokens,
+        outputTokens: u.outputTokens,
+        cachedInputTokens: u.cachedInputTokens,
+        model: u.model,
+      }),
     })) {
       full += chunk;
       yield { type: "delta", text: chunk };
@@ -159,11 +169,15 @@ async function buildContext(
   try {
     const last = history.slice(-2).map((m) => m.content).join("\n");
     const queryText = (last ? last + "\n" : "") + userMessage;
+    const embedRec = makeRecorder(db, "voyage_embed", story.id);
+    const rerankRec = makeRecorder(db, "voyage_rerank", story.id);
     const hits = await search(cfg, db, queryText, {
       mode: "lore",
       topK: LORE_HITS,
       candidates: 30,
       useRerank: true,
+      onEmbedUsage: embedRec,
+      onRerankUsage: rerankRec,
     });
     usage.loreHits = hits.map((h: SearchHit) => ({
       path: h.filePath,

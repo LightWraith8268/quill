@@ -21,6 +21,11 @@ const Schema = z.object({
     .string()
     .default("true")
     .transform((v) => v.toLowerCase() === "true"),
+  QUILL_AUTO_REINDEX: z
+    .string()
+    .default("false")
+    .transform((v) => v.toLowerCase() === "true"),
+  WATCH_DEBOUNCE_MS: z.coerce.number().default(500),
 });
 
 export type Config = z.infer<typeof Schema>;

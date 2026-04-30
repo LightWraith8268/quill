@@ -6,6 +6,7 @@
 // emits each completed agent message in one shot.
 
 import { resolveBin } from "./resolve.ts";
+import type { AgentUsage } from "./claude.ts";
 
 export type CodexOpts = {
   systemPrompt?: string;
@@ -13,11 +14,18 @@ export type CodexOpts = {
   signal?: AbortSignal;
   bin?: string;
   model?: string;
+  onUsage?: (u: AgentUsage) => void;
 };
 
 type CodexEvent = {
   type?: string;
   item?: { id?: string; type?: string; text?: string };
+  usage?: {
+    input_tokens?: number;
+    cached_input_tokens?: number;
+    output_tokens?: number;
+  };
+  model?: string;
 };
 
 export async function* codexStream(
@@ -49,6 +57,13 @@ export async function* codexStream(
   let buf = "";
   const reader = child.stdout.getReader();
   const dec = new TextDecoder();
+  let finalUsage: AgentUsage | null = null;
+
+  const handleLine = (line: string): string | null => {
+    const u = extractUsage(line);
+    if (u) finalUsage = u;
+    return extractText(line);
+  };
 
   while (true) {
     const { done, value } = await reader.read();
@@ -59,14 +74,16 @@ export async function* codexStream(
       const line = buf.slice(0, nl).trim();
       buf = buf.slice(nl + 1);
       if (!line) continue;
-      const text = extractText(line);
+      const text = handleLine(line);
       if (text) yield text;
     }
   }
   if (buf.trim()) {
-    const text = extractText(buf.trim());
+    const text = handleLine(buf.trim());
     if (text) yield text;
   }
+
+  if (finalUsage && opts.onUsage) opts.onUsage(finalUsage);
 
   const code = await child.exited;
   if (code !== 0) {
@@ -84,6 +101,25 @@ function extractText(line: string): string | null {
   }
   if (json.type === "item.completed" && json.item?.type === "agent_message") {
     return json.item.text ?? null;
+  }
+  return null;
+}
+
+function extractUsage(line: string): AgentUsage | null {
+  let json: CodexEvent;
+  try {
+    json = JSON.parse(line) as CodexEvent;
+  } catch {
+    return null;
+  }
+  // Codex emits `turn.completed` with cumulative usage.
+  if (json.type === "turn.completed" && json.usage) {
+    return {
+      inputTokens: json.usage.input_tokens ?? 0,
+      outputTokens: json.usage.output_tokens ?? 0,
+      cachedInputTokens: json.usage.cached_input_tokens ?? 0,
+      model: json.model ?? null,
+    };
   }
   return null;
 }

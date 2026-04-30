@@ -2,6 +2,7 @@
 // Emits assistant deltas as `{type:"message", role:"assistant", delta:true, content:"..."}`.
 
 import { resolveBin } from "./resolve.ts";
+import type { AgentUsage } from "./claude.ts";
 
 export type GeminiOpts = {
   systemPrompt?: string;
@@ -9,6 +10,7 @@ export type GeminiOpts = {
   signal?: AbortSignal;
   bin?: string;
   model?: string;
+  onUsage?: (u: AgentUsage) => void;
 };
 
 type GeminiEvent = {
@@ -17,6 +19,14 @@ type GeminiEvent = {
   content?: string;
   delta?: boolean;
   status?: string;
+  stats?: {
+    total_tokens?: number;
+    input_tokens?: number;
+    output_tokens?: number;
+    cached?: number;
+    cached_tokens?: number;
+  };
+  model?: string;
 };
 
 export async function* geminiStream(
@@ -48,6 +58,13 @@ export async function* geminiStream(
   let buf = "";
   const reader = child.stdout.getReader();
   const dec = new TextDecoder();
+  let finalUsage: AgentUsage | null = null;
+
+  const handleLine = (line: string): string | null => {
+    const u = extractUsage(line);
+    if (u) finalUsage = u;
+    return extractText(line);
+  };
 
   while (true) {
     const { done, value } = await reader.read();
@@ -58,14 +75,16 @@ export async function* geminiStream(
       const line = buf.slice(0, nl).trim();
       buf = buf.slice(nl + 1);
       if (!line) continue;
-      const text = extractText(line);
+      const text = handleLine(line);
       if (text) yield text;
     }
   }
   if (buf.trim()) {
-    const text = extractText(buf.trim());
+    const text = handleLine(buf.trim());
     if (text) yield text;
   }
+
+  if (finalUsage && opts.onUsage) opts.onUsage(finalUsage);
 
   const code = await child.exited;
   if (code !== 0) {
@@ -87,6 +106,30 @@ function extractText(line: string): string | null {
     typeof json.content === "string"
   ) {
     return json.content;
+  }
+  return null;
+}
+
+function extractUsage(line: string): AgentUsage | null {
+  let json: GeminiEvent;
+  try {
+    json = JSON.parse(line) as GeminiEvent;
+  } catch {
+    return null;
+  }
+  if ((json.type === "result" || json.type === "stats") && json.stats) {
+    const s = json.stats;
+    const inTok = s.input_tokens ?? 0;
+    const outTok = s.output_tokens ?? 0;
+    const cached = s.cached_tokens ?? s.cached ?? 0;
+    // Fallback: if only total reported, treat as input.
+    const total = s.total_tokens ?? 0;
+    return {
+      inputTokens: inTok || (total && !outTok ? total : 0),
+      outputTokens: outTok,
+      cachedInputTokens: cached,
+      model: json.model ?? null,
+    };
   }
   return null;
 }

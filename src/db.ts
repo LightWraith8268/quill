@@ -93,6 +93,22 @@ function migrate(db: DB, cfg: Config): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_drafts_path ON drafts(file_path, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS usage_events (
+      id INTEGER PRIMARY KEY,
+      ts INTEGER NOT NULL,
+      story_id INTEGER,
+      agent TEXT NOT NULL,
+      model TEXT,
+      input_tokens INTEGER NOT NULL DEFAULT 0,
+      output_tokens INTEGER NOT NULL DEFAULT 0,
+      cached_input_tokens INTEGER NOT NULL DEFAULT 0,
+      cost_usd REAL NOT NULL DEFAULT 0,
+      meta TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_usage_ts ON usage_events(ts DESC);
+    CREATE INDEX IF NOT EXISTS idx_usage_story ON usage_events(story_id, ts DESC);
   `);
 
   const existing = db

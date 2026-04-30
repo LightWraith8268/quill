@@ -9,6 +9,7 @@ import {
   type AgentSelection,
   type ChatMessage,
   type Story,
+  type UsageResponse,
 } from "../api.ts";
 import { StoryConfig } from "./StoryConfig.tsx";
 import { MarkdownView } from "./MarkdownView.tsx";
@@ -35,7 +36,18 @@ export function ChatPanel({ storyId }: Props) {
   const [routedAgent, setRoutedAgent] = useState<AgentName | null>(null);
   const [routeReason, setRouteReason] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [usage, setUsage] = useState<UsageResponse | null>(null);
+  const turnStartRef = useRef<number>(0);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const refreshUsage = async (sid: number) => {
+    try {
+      const u = await api.usage(sid);
+      setUsage(u);
+    } catch {
+      /* non-fatal */
+    }
+  };
 
   useEffect(() => {
     setMessages([]);
@@ -48,6 +60,7 @@ export function ChatPanel({ storyId }: Props) {
       .storyMessages(storyId)
       .then((r) => setMessages(r.messages))
       .catch((e: Error) => setErr(e.message));
+    refreshUsage(storyId);
   }, [storyId]);
 
   useEffect(() => {
@@ -78,6 +91,7 @@ export function ChatPanel({ storyId }: Props) {
     };
     setMessages((cur) => [...cur, optimistic]);
     setDraft("");
+    turnStartRef.current = Date.now();
 
     try {
       let buffered = "";
@@ -100,6 +114,7 @@ export function ChatPanel({ storyId }: Props) {
           const r = await api.storyMessages(storyId);
           setMessages(r.messages);
           setStreamText("");
+          refreshUsage(storyId);
         } else if (ev.event === "error") {
           const data = ev.data as { error: string };
           throw new Error(data.error);
@@ -165,6 +180,8 @@ export function ChatPanel({ storyId }: Props) {
           />
         )}
       </div>
+
+      {usage && <UsageHud usage={usage} turnStartTs={turnStartRef.current} />}
 
       {lastContext && (
         <details className="card text-xs">
@@ -242,6 +259,64 @@ export function ChatPanel({ storyId }: Props) {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function fmtNum(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + "K";
+  return String(n);
+}
+
+function fmtCost(usd: number): string {
+  if (usd === 0) return "$0";
+  if (usd < 0.001) return "<$0.001";
+  if (usd < 1) return `$${usd.toFixed(3)}`;
+  return `$${usd.toFixed(2)}`;
+}
+
+function UsageHud({
+  usage,
+  turnStartTs,
+}: {
+  usage: UsageResponse;
+  turnStartTs: number;
+}) {
+  // "This turn" = events newer than the last user message timestamp.
+  const turnEvents = usage.events.filter((e) => e.ts >= turnStartTs);
+  const turn = turnEvents.reduce(
+    (acc, e) => ({
+      input: acc.input + e.inputTokens,
+      output: acc.output + e.outputTokens,
+      cost: acc.cost + e.costUsd,
+    }),
+    { input: 0, output: 0, cost: 0 }
+  );
+
+  const total = usage.summary;
+
+  return (
+    <div className="card text-xs flex flex-wrap items-center gap-x-4 gap-y-1 font-mono">
+      {turnStartTs > 0 && turnEvents.length > 0 && (
+        <span>
+          <span className="text-muted">this turn:</span>{" "}
+          <span className="text-tealBright">{fmtNum(turn.input)} in</span> ·{" "}
+          <span className="text-tealBright">{fmtNum(turn.output)} out</span> ·{" "}
+          ~{fmtCost(turn.cost)}
+        </span>
+      )}
+      <span>
+        <span className="text-muted">story total:</span>{" "}
+        {fmtNum(total.tokens)} · ~{fmtCost(total.costUsd)}
+      </span>
+      {usage.totals.length > 0 && (
+        <span className="text-muted">
+          {usage.totals
+            .map((r) => `${r.agent}:${fmtCost(r.costUsd)}`)
+            .join(" · ")}
+        </span>
+      )}
     </div>
   );
 }

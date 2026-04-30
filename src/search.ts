@@ -4,8 +4,8 @@
 
 import type { Config } from "./config.ts";
 import type { DB } from "./db.ts";
-import { embedBatch, toFloat32Buffer } from "./embed.ts";
-import { rerank } from "./rerank.ts";
+import { embedBatch, toFloat32Buffer, type EmbedUsageRecorder } from "./embed.ts";
+import { rerank, type RerankUsageRecorder } from "./rerank.ts";
 
 export type SearchMode = "lore" | "style" | "uncensored" | "any";
 
@@ -28,6 +28,8 @@ export type SearchOptions = {
   topK: number;
   candidates: number; // pool size before rerank
   useRerank: boolean;
+  onEmbedUsage?: EmbedUsageRecorder;
+  onRerankUsage?: RerankUsageRecorder;
 };
 
 type VectorRow = {
@@ -78,7 +80,7 @@ export async function search(
   query: string,
   opts: SearchOptions
 ): Promise<SearchHit[]> {
-  const { embeddings } = await embedBatch(cfg, [query], "query");
+  const { embeddings } = await embedBatch(cfg, [query], "query", opts.onEmbedUsage);
   const qvec = embeddings[0]!;
   const qbuf = toFloat32Buffer(qvec);
 
@@ -195,7 +197,7 @@ export async function search(
 
   if (opts.useRerank && hits.length > 0) {
     const docs = hits.map((h) => h.content);
-    const ranked = await rerank(cfg, query, docs, opts.topK);
+    const ranked = await rerank(cfg, query, docs, opts.topK, opts.onRerankUsage);
     hits = ranked.map((r) => ({
       ...hits[r.index]!,
       rerankScore: r.score,

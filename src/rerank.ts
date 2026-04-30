@@ -10,11 +10,18 @@ type RerankResponse = {
   usage: { total_tokens: number };
 };
 
+export type RerankUsageRecorder = (u: {
+  inputTokens: number;
+  outputTokens: number;
+  model?: string | null;
+}) => void;
+
 export async function rerank(
   cfg: Config,
   query: string,
   documents: string[],
-  topK: number
+  topK: number,
+  onUsage?: RerankUsageRecorder
 ): Promise<{ index: number; score: number }[]> {
   if (documents.length === 0) return [];
   if (!cfg.VOYAGE_API_KEY) throw new Error("VOYAGE_API_KEY not set");
@@ -38,5 +45,12 @@ export async function rerank(
     throw new Error(`Rerank ${res.status}: ${text}`);
   }
   const json = (await res.json()) as RerankResponse;
+  if (onUsage) {
+    onUsage({
+      inputTokens: json.usage?.total_tokens ?? 0,
+      outputTokens: 0,
+      model: cfg.RERANK_MODEL,
+    });
+  }
   return json.data.map((d) => ({ index: d.index, score: d.relevance_score }));
 }

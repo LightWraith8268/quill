@@ -33,6 +33,9 @@ import {
   getDraft,
   deleteDraft,
 } from "./drafts.ts";
+import { checkHealth } from "./health.ts";
+import { logError, recentErrors } from "./errlog.ts";
+import { listUsageEvents, usageRollup } from "./usage.ts";
 
 const SearchBody = z.object({
   query: z.string().min(1),
@@ -96,6 +99,22 @@ export function buildApp(cfg: Config) {
   app.use("/api/*", apiAuth as Parameters<typeof app.use>[1]);
 
   app.get("/api/health", (c) => c.json({ ok: true }));
+
+  app.get("/api/health/full", async (c) => {
+    try {
+      const report = await checkHealth(cfg);
+      return c.json(report);
+    } catch (e) {
+      logError("http.health.full", e);
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
+    }
+  });
+
+  app.get("/api/errors", (c) => {
+    const limitRaw = c.req.query("limit");
+    const limit = limitRaw ? Math.max(1, Math.min(500, Number(limitRaw) || 100)) : 100;
+    return c.json({ errors: recentErrors(limit) });
+  });
 
   app.get("/api/stats", (c) => {
     const files = db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM files").get()!.n;
@@ -374,6 +393,24 @@ export function buildApp(cfg: Config) {
         Connection: "keep-alive",
       },
     });
+  });
+
+  // ===== Usage =====
+
+  app.get("/api/usage", (c) => {
+    const storyIdRaw = c.req.query("storyId");
+    const sinceRaw = c.req.query("since");
+    const storyId = storyIdRaw ? Number(storyIdRaw) : undefined;
+    const since = sinceRaw ? Number(sinceRaw) : undefined;
+    const events = listUsageEvents(db, { storyId, since });
+    const { perAgent, totals } = usageRollup(db, { storyId, since });
+    return c.json({ events, totals: perAgent, summary: totals });
+  });
+
+  app.get("/api/usage/totals", (c) => {
+    const sinceRaw = c.req.query("since");
+    const since = sinceRaw ? Number(sinceRaw) : undefined;
+    return c.json(usageRollup(db, { since }));
   });
 
   // Static SPA: web/dist served at root. SPA fallback to index.html.

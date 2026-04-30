@@ -6,6 +6,8 @@ import { listStyles, getStyle } from "./style.ts";
 import { serve } from "./http.ts";
 import { runMcp } from "./mcp.ts";
 import { runTunnel } from "./tunnel.ts";
+import { startWatcher } from "./watcher.ts";
+import { usageRollup } from "./usage.ts";
 
 const HELP = `quill — writing RAG
 
@@ -20,9 +22,12 @@ Usage:
     --json                                   JSON output
   quill style list                           List style profiles
   quill style get <name>                     Print style profile content
-  quill serve                                Start HTTP API on 127.0.0.1:HTTP_PORT
+  quill serve [--watch]                      Start HTTP API on 127.0.0.1:HTTP_PORT
+                                             --watch also auto-reindexes on file changes
+  quill watch                                Run file watcher only (auto-reindex)
   quill mcp                                  Run MCP stdio server (for Claude Code)
   quill tunnel                               Run cloudflared tunnel (cloudflared/config.yml)
+  quill usage [--story N] [--days 7]         Token usage + approx cost rollup
 `;
 
 function arg(rest: string[], flag: string): string | undefined {
@@ -134,6 +139,35 @@ async function main(): Promise<void> {
     }
     case "serve": {
       serve(cfg);
+      const wantWatch = hasFlag(rest, "--watch") || cfg.QUILL_AUTO_REINDEX;
+      if (wantWatch) {
+        const db = openDb(cfg);
+        const stop = startWatcher(cfg, db, {
+          debounceMs: cfg.WATCH_DEBOUNCE_MS,
+        });
+        const shutdown = (): void => {
+          stop();
+          process.exit(0);
+        };
+        process.on("SIGINT", shutdown);
+        process.on("SIGTERM", shutdown);
+      }
+      return;
+    }
+    case "watch": {
+      const db = openDb(cfg);
+      console.log(`[watcher] watching ${cfg.VAULT_PATH}`);
+      const stop = startWatcher(cfg, db, {
+        debounceMs: cfg.WATCH_DEBOUNCE_MS,
+      });
+      const shutdown = (): void => {
+        stop();
+        process.exit(0);
+      };
+      process.on("SIGINT", shutdown);
+      process.on("SIGTERM", shutdown);
+      // Keep process alive
+      await new Promise<void>(() => {});
       return;
     }
     case "mcp": {
@@ -143,6 +177,18 @@ async function main(): Promise<void> {
     case "tunnel": {
       const code = await runTunnel(process.cwd());
       process.exit(code);
+    }
+    case "usage": {
+      const db = openDb(cfg);
+      const storyArg = arg(rest, "--story");
+      const daysArg = arg(rest, "--days");
+      const storyId = storyArg ? Number(storyArg) : undefined;
+      const days = daysArg ? Number(daysArg) : undefined;
+      const since =
+        days && Number.isFinite(days) ? Date.now() - days * 86_400_000 : undefined;
+      const rollup = usageRollup(db, { storyId, since });
+      console.log(JSON.stringify(rollup, null, 2));
+      return;
     }
     default:
       console.error(`Unknown command: ${cmd}`);
