@@ -194,6 +194,46 @@ export const api = {
       `/stories/${storyId}/branch`,
       { method: "POST", body: { label } }
     ),
+  goalsList: (storyId: number) =>
+    req<{ goals: GoalRow[] }>(`/stories/${storyId}/goals`),
+  goalUpsert: (
+    storyId: number,
+    body: {
+      kind: "daily_words" | "total_words" | "deadline";
+      target?: number | null;
+      deadline_ms?: number | null;
+    }
+  ) => req<GoalRow>(`/stories/${storyId}/goals`, { method: "POST", body }),
+  goalDelete: (id: number) =>
+    req<{ ok: boolean }>(`/goals/${id}`, { method: "DELETE" }),
+  sessionStart: (storyId: number, filePath?: string) =>
+    req<TimeSessionRow>(`/stories/${storyId}/sessions/start`, {
+      method: "POST",
+      body: { filePath },
+    }),
+  sessionHeartbeat: (sessionId: number) =>
+    req<TimeSessionRow>("/sessions/heartbeat", {
+      method: "POST",
+      body: { sessionId },
+    }),
+  sessionEnd: (sessionId: number) =>
+    req<TimeSessionRow>("/sessions/end", {
+      method: "POST",
+      body: { sessionId },
+    }),
+  sessionsList: (storyId: number, days = 30) =>
+    req<{ sessions: TimeSessionRow[] }>(
+      `/stories/${storyId}/sessions?days=${days}`
+    ),
+  daylogPost: (storyId: number, day: string, wordsAtEnd: number) =>
+    req<DailyWordRow>(`/stories/${storyId}/daylog`, {
+      method: "POST",
+      body: { day, wordsAtEnd },
+    }),
+  daylogList: (storyId: number, days = 30) =>
+    req<{ days: DailyWordRow[] }>(
+      `/stories/${storyId}/daylog?days=${days}`
+    ),
   compileStory: async (
     storyId: number,
     format: "md" | "html" | "docx"
@@ -363,6 +403,33 @@ export type DraftMeta = {
   created_at: number;
 };
 export type DraftFull = DraftMeta & { content: string };
+
+export type GoalRow = {
+  id: number;
+  story_id: number;
+  kind: "daily_words" | "total_words" | "deadline";
+  target: number | null;
+  deadline_ms: number | null;
+  created_at: number;
+  updated_at: number;
+};
+export type TimeSessionRow = {
+  id: number;
+  story_id: number;
+  started_at: number;
+  ended_at: number | null;
+  seconds: number;
+  file_path: string | null;
+};
+export type DailyWordRow = {
+  id: number;
+  story_id: number;
+  day: string;
+  words_at_start: number;
+  words_at_end: number;
+  delta: number;
+  updated_at: number;
+};
 
 export type OutlineNode = {
   id: number;

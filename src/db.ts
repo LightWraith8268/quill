@@ -140,6 +140,41 @@ function migrate(db: DB, cfg: Config): void {
     /* already exists */
   }
 
+  // Phase 20 — daily goals + time tracker tables
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS goals (
+      id INTEGER PRIMARY KEY,
+      story_id INTEGER NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL CHECK(kind IN ('daily_words','total_words','deadline')),
+      target INTEGER,
+      deadline_ms INTEGER,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_goals_story ON goals(story_id);
+
+    CREATE TABLE IF NOT EXISTS time_sessions (
+      id INTEGER PRIMARY KEY,
+      story_id INTEGER NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+      started_at INTEGER NOT NULL,
+      ended_at INTEGER,
+      seconds INTEGER NOT NULL DEFAULT 0,
+      file_path TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_sessions_story ON time_sessions(story_id, started_at DESC);
+
+    CREATE TABLE IF NOT EXISTS daily_word_log (
+      id INTEGER PRIMARY KEY,
+      story_id INTEGER NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+      day TEXT NOT NULL,
+      words_at_start INTEGER NOT NULL,
+      words_at_end INTEGER NOT NULL,
+      delta INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      UNIQUE(story_id, day)
+    );
+  `);
+
   const existing = db
     .query<{ name: string }, []>(
       "SELECT name FROM sqlite_master WHERE type='table' AND name='vec_chunks'"

@@ -57,6 +57,18 @@ import { compileStory } from "./compile.ts";
 import { clipUrl } from "./research.ts";
 import { buildGlossary } from "./glossary.ts";
 import { branchStory } from "./branches.ts";
+import {
+  listGoals,
+  upsertGoal,
+  deleteGoal,
+  startSession,
+  heartbeat,
+  endSession,
+  recentSessions,
+  logWordsForDay,
+  dailyLog,
+  type GoalKind,
+} from "./dashboard.ts";
 import { readFile as fsReadFile } from "node:fs/promises";
 import { buildStoryExport } from "./export.ts";
 
@@ -177,6 +189,25 @@ const ClipBody = z.object({
 
 const BranchBody = z.object({
   label: z.string().min(1).max(60),
+});
+
+const GoalBody = z.object({
+  kind: z.enum(["daily_words", "total_words", "deadline"]),
+  target: z.number().int().nonnegative().nullable().optional(),
+  deadline_ms: z.number().int().positive().nullable().optional(),
+});
+
+const SessionStartBody = z.object({
+  filePath: z.string().optional(),
+});
+
+const SessionHeartbeatBody = z.object({
+  sessionId: z.number().int().positive(),
+});
+
+const DayLogBody = z.object({
+  day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  wordsAtEnd: z.number().int().nonnegative(),
 });
 
 export function buildApp(cfg: Config) {
@@ -777,6 +808,74 @@ export function buildApp(cfg: Config) {
     } catch (e) {
       return c.json({ error: e instanceof Error ? e.message : String(e) }, 404);
     }
+  });
+
+  // ===== Dashboard / goals / time =====
+
+  app.get("/api/stories/:id/goals", (c) => {
+    const id = Number(c.req.param("id"));
+    return c.json({ goals: listGoals(db, id) });
+  });
+
+  app.post("/api/stories/:id/goals", async (c) => {
+    const id = Number(c.req.param("id"));
+    const parsed = GoalBody.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return c.json({ error: "bad request", issues: parsed.error.flatten() }, 400);
+    const g = upsertGoal(
+      db,
+      id,
+      parsed.data.kind as GoalKind,
+      parsed.data.target ?? null,
+      parsed.data.deadline_ms ?? null
+    );
+    return c.json(g);
+  });
+
+  app.delete("/api/goals/:id", (c) => {
+    const id = Number(c.req.param("id"));
+    return c.json({ ok: deleteGoal(db, id) });
+  });
+
+  app.post("/api/stories/:id/sessions/start", async (c) => {
+    const id = Number(c.req.param("id"));
+    const parsed = SessionStartBody.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return c.json({ error: "bad request", issues: parsed.error.flatten() }, 400);
+    return c.json(startSession(db, id, parsed.data.filePath));
+  });
+
+  app.post("/api/sessions/heartbeat", async (c) => {
+    const parsed = SessionHeartbeatBody.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return c.json({ error: "bad request", issues: parsed.error.flatten() }, 400);
+    const r = heartbeat(db, parsed.data.sessionId);
+    if (!r) return c.json({ error: "not found" }, 404);
+    return c.json(r);
+  });
+
+  app.post("/api/sessions/end", async (c) => {
+    const parsed = SessionHeartbeatBody.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return c.json({ error: "bad request", issues: parsed.error.flatten() }, 400);
+    const r = endSession(db, parsed.data.sessionId);
+    if (!r) return c.json({ error: "not found" }, 404);
+    return c.json(r);
+  });
+
+  app.get("/api/stories/:id/sessions", (c) => {
+    const id = Number(c.req.param("id"));
+    const days = Number(c.req.query("days") ?? 30);
+    return c.json({ sessions: recentSessions(db, id, days) });
+  });
+
+  app.post("/api/stories/:id/daylog", async (c) => {
+    const id = Number(c.req.param("id"));
+    const parsed = DayLogBody.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return c.json({ error: "bad request", issues: parsed.error.flatten() }, 400);
+    return c.json(logWordsForDay(db, id, parsed.data.day, parsed.data.wordsAtEnd));
+  });
+
+  app.get("/api/stories/:id/daylog", (c) => {
+    const id = Number(c.req.param("id"));
+    const days = Number(c.req.query("days") ?? 30);
+    return c.json({ days: dailyLog(db, id, days) });
   });
 
   app.post("/api/stories/:id/branch", async (c) => {

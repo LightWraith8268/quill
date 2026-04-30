@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, auth, type ReindexResult, type Stats } from "../api.ts";
 import { WordCountDashboard } from "./WordCountDashboard.tsx";
+import { WritingDashboard } from "./WritingDashboard.tsx";
 
 type ProbeResult = { ok: boolean; latencyMs: number; error?: string };
 type DbProbe = { ok: boolean; sizeBytes: number; error?: string };
@@ -116,7 +117,10 @@ export function StatsPanel({ activeStoryId }: { activeStoryId: number | null }) 
       <ErrorsCard />
 
       {activeStoryId !== null && (
-        <WordCountDashboard storyId={activeStoryId} />
+        <>
+          <WritingDashboard storyId={activeStoryId} />
+          <WordCountDashboard storyId={activeStoryId} />
+        </>
       )}
 
       {err && <div className="bg-red-100 text-red-900 dark:bg-red-900/40 dark:text-red-200 text-sm p-3 rounded">{err}</div>}
