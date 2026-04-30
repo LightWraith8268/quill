@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { getTheme, setTheme, type ThemeMode } from "../theme.ts";
+import { ResearchClipModal } from "./ResearchClipModal.tsx";
 
 type Tab =
   | "chat"
@@ -55,6 +56,7 @@ export function TopBar(props: {
         ))}
       </nav>
       <div className="ml-auto flex items-center gap-2">
+        <ResearchButton />
         <ThemeToggle />
         <button
           onClick={props.onLogout}
@@ -193,5 +195,26 @@ function ThemeToggle() {
         );
       })}
     </div>
+  );
+}
+
+function ResearchButton() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        title="Clip a URL into Research/"
+        className="px-2 py-1 text-xs rounded border border-muted/30 hover:border-tealBright hover:text-tealBright"
+      >
+        🔗
+      </button>
+      {open && (
+        <ResearchClipModal
+          onClose={() => setOpen(false)}
+          onClipped={() => {}}
+        />
+      )}
+    </>
   );
 }

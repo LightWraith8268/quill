@@ -128,6 +128,18 @@ function migrate(db: DB, cfg: Config): void {
     CREATE INDEX IF NOT EXISTS idx_outline_parent ON outline_nodes(parent_id, sort_order);
   `);
 
+  // Phase 19: branch_of_story_id on stories (added separately for ALTER tolerance)
+  try {
+    db.exec(`ALTER TABLE stories ADD COLUMN branch_of_story_id INTEGER`);
+  } catch {
+    /* already exists */
+  }
+  try {
+    db.exec(`ALTER TABLE stories ADD COLUMN branch_label TEXT`);
+  } catch {
+    /* already exists */
+  }
+
   const existing = db
     .query<{ name: string }, []>(
       "SELECT name FROM sqlite_master WHERE type='table' AND name='vec_chunks'"

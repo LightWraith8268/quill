@@ -54,6 +54,9 @@ import {
 } from "./outline.ts";
 import { buildReadingPass } from "./reading.ts";
 import { compileStory } from "./compile.ts";
+import { clipUrl } from "./research.ts";
+import { buildGlossary } from "./glossary.ts";
+import { branchStory } from "./branches.ts";
 import { readFile as fsReadFile } from "node:fs/promises";
 import { buildStoryExport } from "./export.ts";
 
@@ -165,6 +168,15 @@ const OutlineUpdateBody = z.object({
 const OutlineReorderBody = z.object({
   parentId: z.number().int().positive().nullable(),
   orderedIds: z.array(z.number().int().positive()),
+});
+
+const ClipBody = z.object({
+  url: z.string().url(),
+  topic: z.string().optional(),
+});
+
+const BranchBody = z.object({
+  label: z.string().min(1).max(60),
 });
 
 export function buildApp(cfg: Config) {
@@ -741,6 +753,39 @@ export function buildApp(cfg: Config) {
           "X-Quill-Compile-Path": r.outAbs,
         },
       });
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
+    }
+  });
+
+  app.post("/api/research/clip", async (c) => {
+    const parsed = ClipBody.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return c.json({ error: "bad request", issues: parsed.error.flatten() }, 400);
+    try {
+      const r = await clipUrl(cfg, parsed.data.url, { topic: parsed.data.topic });
+      return c.json(r);
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
+    }
+  });
+
+  app.get("/api/stories/:id/glossary", async (c) => {
+    const id = Number(c.req.param("id"));
+    try {
+      const r = await buildGlossary(cfg, db, id);
+      return c.json(r);
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 404);
+    }
+  });
+
+  app.post("/api/stories/:id/branch", async (c) => {
+    const id = Number(c.req.param("id"));
+    const parsed = BranchBody.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return c.json({ error: "bad request", issues: parsed.error.flatten() }, 400);
+    try {
+      const r = branchStory(db, id, parsed.data.label);
+      return c.json(r);
     } catch (e) {
       return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
     }

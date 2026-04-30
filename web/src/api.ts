@@ -179,6 +179,21 @@ export const api = {
     }),
   readingPass: (storyId: number) =>
     req<ReadingPass>(`/stories/${storyId}/reading`),
+  clipUrl: (url: string, topic?: string) =>
+    req<{ url: string; title: string; vaultPath: string; bytes: number; textLength: number }>(
+      "/research/clip",
+      { method: "POST", body: { url, topic } }
+    ),
+  storyGlossary: (storyId: number) =>
+    req<{
+      story: { id: number; name: string; series: string | null };
+      entries: { term: string; source: string; count?: number; files?: string[] }[];
+    }>(`/stories/${storyId}/glossary`),
+  branchStory: (storyId: number, label: string) =>
+    req<{ storyId: number; branchOf: number; label: string }>(
+      `/stories/${storyId}/branch`,
+      { method: "POST", body: { label } }
+    ),
   compileStory: async (
     storyId: number,
     format: "md" | "html" | "docx"
