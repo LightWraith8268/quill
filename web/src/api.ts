@@ -239,6 +239,37 @@ export const api = {
   pronunciationGet: () => req<Record<string, string>>("/pronunciation"),
   pronunciationSet: (map: Record<string, string>) =>
     req<{ ok: boolean }>("/pronunciation", { method: "PUT", body: map }),
+  seriesRenamePreview: (
+    series: string,
+    needle: string,
+    replacement: string,
+    wholeWord = true
+  ) =>
+    req<{
+      series: string;
+      needle: string;
+      replacement: string;
+      matches: { path: string; line: number; col: number; context: string }[];
+      fileCount: number;
+    }>("/series/rename", {
+      method: "POST",
+      body: { series, needle, replacement, wholeWord, apply: false },
+    }),
+  seriesRenameApply: (
+    series: string,
+    needle: string,
+    replacement: string,
+    wholeWord = true
+  ) =>
+    req<{ apply: true; filesTouched: number; totalReplacements: number }>(
+      "/series/rename",
+      {
+        method: "POST",
+        body: { series, needle, replacement, wholeWord, apply: true },
+      }
+    ),
+  calendarUrl: (storyId: number): string =>
+    `/api/stories/${storyId}/calendar.ics`,
   compileStory: async (
     storyId: number,
     format: "md" | "html" | "docx"

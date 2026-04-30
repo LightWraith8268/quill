@@ -58,6 +58,8 @@ import { clipUrl } from "./research.ts";
 import { buildGlossary } from "./glossary.ts";
 import { branchStory } from "./branches.ts";
 import { buildBeats, loadPronunciationMap, savePronunciationMap } from "./beats.ts";
+import { previewRename, applyRename } from "./rename.ts";
+import { buildIcsForStory } from "./ics.ts";
 import {
   listGoals,
   upsertGoal,
@@ -209,6 +211,14 @@ const SessionHeartbeatBody = z.object({
 const DayLogBody = z.object({
   day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   wordsAtEnd: z.number().int().nonnegative(),
+});
+
+const RenameBody = z.object({
+  series: z.string().min(1),
+  needle: z.string().min(1),
+  replacement: z.string(),
+  wholeWord: z.boolean().optional(),
+  apply: z.boolean().optional(),
 });
 
 export function buildApp(cfg: Config) {
@@ -819,6 +829,33 @@ export function buildApp(cfg: Config) {
     const map = (await c.req.json().catch(() => ({}))) as Record<string, string>;
     await savePronunciationMap(cfg, map);
     return c.json({ ok: true });
+  });
+
+  app.post("/api/series/rename", async (c) => {
+    const parsed = RenameBody.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return c.json({ error: "bad request", issues: parsed.error.flatten() }, 400);
+    const { series, needle, replacement, wholeWord = true, apply = false } = parsed.data;
+    if (apply) {
+      const r = await applyRename(cfg, db, series, needle, replacement, wholeWord);
+      return c.json({ apply: true, ...r });
+    }
+    const r = await previewRename(cfg, series, needle, replacement, wholeWord);
+    return c.json(r);
+  });
+
+  app.get("/api/stories/:id/calendar.ics", (c) => {
+    const id = Number(c.req.param("id"));
+    try {
+      const r = buildIcsForStory(db, id, {});
+      return new Response(r.payload, {
+        headers: {
+          "Content-Type": "text/calendar; charset=utf-8",
+          "Content-Disposition": `attachment; filename="${r.filename}"`,
+        },
+      });
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 404);
+    }
   });
 
   app.get("/api/stories/:id/glossary", async (c) => {

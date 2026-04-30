@@ -6,6 +6,15 @@ import "./index.css";
 
 applyTheme();
 
+// Register service worker (PWA)
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {
+      /* fail silently — SW is enhancement, not requirement */
+    });
+  });
+}
+
 const root = document.getElementById("root");
 if (!root) throw new Error("missing #root");
 

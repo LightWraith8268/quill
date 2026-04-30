@@ -18,6 +18,7 @@ import { PinnedContext } from "./PinnedContext.tsx";
 import { InsertModal } from "./InsertModal.tsx";
 import { EnsemblePanel } from "./EnsemblePanel.tsx";
 import { usePins, clearPins } from "../pins.ts";
+import { startDictation, type SttController } from "../stt.ts";
 
 type Props = {
   storyId: number | null;
@@ -47,6 +48,8 @@ export function ChatPanel({ storyId }: Props) {
   const [insertingFromId, setInsertingFromId] = useState<number | null>(null);
   const [insertOk, setInsertOk] = useState<string | null>(null);
   const [ensemblePrompt, setEnsemblePrompt] = useState<string | null>(null);
+  const [dictating, setDictating] = useState(false);
+  const dictRef = useRef<SttController | null>(null);
   const { formatForPrompt } = usePins(storyId ?? 0);
   const turnStartRef = useRef<number>(0);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -351,11 +354,37 @@ export function ChatPanel({ storyId }: Props) {
         <div className="mt-2 flex gap-2">
           <button
             onClick={() => {
+              if (dictating) {
+                dictRef.current?.stop();
+                setDictating(false);
+                return;
+              }
+              const ctl = startDictation({
+                onText: (t, isFinal) => {
+                  if (isFinal) setDraft((d) => (d ? d + " " + t : t));
+                },
+                onEnd: () => setDictating(false),
+                onError: () => setDictating(false),
+              });
+              if (!ctl.isSupported) {
+                setErr("Speech recognition not supported in this browser.");
+                return;
+              }
+              dictRef.current = ctl;
+              setDictating(true);
+            }}
+            className={`btn ${dictating ? "btn-primary" : "btn-ghost"} text-xs ml-auto`}
+            title="Voice dictation (Web Speech API)"
+          >
+            🎙
+          </button>
+          <button
+            onClick={() => {
               if (!draft.trim() || busy) return;
               setEnsemblePrompt(draft.trim());
             }}
             disabled={busy || !draft.trim()}
-            className="btn btn-ghost text-xs ml-auto"
+            className="btn btn-ghost text-xs"
             title="Run all 3 agents on this prompt side-by-side"
           >
             Ensemble
