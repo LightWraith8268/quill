@@ -10,6 +10,7 @@ import { StoryPicker } from "./components/StoryPicker.tsx";
 import { WorkflowRunner } from "./components/WorkflowRunner.tsx";
 import { VaultBrowser } from "./components/VaultBrowser.tsx";
 import { LoreBrowser } from "./components/LoreBrowser.tsx";
+import { VAULT_NAV_EVENT, VAULT_PENDING_KEY } from "./citations.ts";
 
 type Tab = "chat" | "workflows" | "search" | "vault" | "lore" | "styles" | "stats";
 
@@ -49,6 +50,25 @@ export default function App() {
       localStorage.removeItem(ACTIVE_STORY_KEY);
     }
   }, [activeStoryId]);
+
+  // Cross-tab nav: chat citations dispatch quill:navigate-vault. Switch tabs;
+  // the requested path is stashed in localStorage by the helper for VaultBrowser
+  // to pick up. (VaultBrowser wiring lands in a follow-up phase.)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ path?: string }>).detail;
+      if (detail?.path) {
+        try {
+          localStorage.setItem(VAULT_PENDING_KEY, detail.path);
+        } catch {
+          // ignore storage failures
+        }
+      }
+      setTab("vault");
+    };
+    window.addEventListener(VAULT_NAV_EVENT, handler);
+    return () => window.removeEventListener(VAULT_NAV_EVENT, handler);
+  }, []);
 
   const onPickStory = (s: Story) => {
     setActiveStoryId(s.id);

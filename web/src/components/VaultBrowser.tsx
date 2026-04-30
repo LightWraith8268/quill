@@ -8,7 +8,20 @@ import {
   type TreeNode,
   type VaultFile,
 } from "../api.ts";
+import { DiffView } from "./DiffView.tsx";
 import { MarkdownView } from "./MarkdownView.tsx";
+import { recentFiles } from "../recents.ts";
+import { RecentFiles } from "./RecentFiles.tsx";
+
+const PENDING_KEY = "quill.vaultPending";
+
+type Comparison =
+  | { kind: "single"; meta: DraftMeta; content: string }
+  | {
+      kind: "diff";
+      left: { label: string; content: string };
+      right: { label: string; content: string };
+    };
 
 export function VaultBrowser() {
   const [tree, setTree] = useState<TreeNode | null>(null);
@@ -18,21 +31,43 @@ export function VaultBrowser() {
   const [drafts, setDrafts] = useState<DraftMeta[]>([]);
   const [draftBusy, setDraftBusy] = useState(false);
   const [draftNote, setDraftNote] = useState("");
-  const [draftViewing, setDraftViewing] = useState<{
-    meta: DraftMeta;
-    content: string;
-  } | null>(null);
+  const [comparison, setComparison] = useState<Comparison | null>(null);
+  const [selectedDrafts, setSelectedDrafts] = useState<Set<number>>(
+    () => new Set(),
+  );
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
     api.vaultTree().then(setTree).catch((e: Error) => setErr(e.message));
+    // Consume pending navigate request from citation auto-link
+    const consume = () => {
+      const p = localStorage.getItem(PENDING_KEY);
+      if (p) {
+        localStorage.removeItem(PENDING_KEY);
+        setActivePath(p);
+      }
+    };
+    consume();
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ path?: string }>).detail;
+      if (detail?.path) setActivePath(detail.path);
+      else consume();
+    };
+    window.addEventListener("quill:navigate-vault", handler);
+    return () => window.removeEventListener("quill:navigate-vault", handler);
   }, []);
+
+  // Record viewed paths for the recent-files store
+  useEffect(() => {
+    if (activePath) recentFiles.push({ path: activePath, ts: Date.now() });
+  }, [activePath]);
 
   useEffect(() => {
     if (!activePath) {
       setFile(null);
       setDrafts([]);
-      setDraftViewing(null);
+      setComparison(null);
+      setSelectedDrafts(new Set());
       return;
     }
     api.vaultFile(activePath).then(setFile).catch((e: Error) => setErr(e.message));
@@ -40,7 +75,8 @@ export function VaultBrowser() {
       .draftsList(activePath)
       .then((r) => setDrafts(r.drafts))
       .catch(() => {});
-    setDraftViewing(null);
+    setComparison(null);
+    setSelectedDrafts(new Set());
   }, [activePath]);
 
   const toggleDir = (path: string) => {
@@ -69,7 +105,7 @@ export function VaultBrowser() {
 
   const viewDraft = async (id: number) => {
     const d = await api.draftGet(id);
-    setDraftViewing({ meta: d, content: d.content });
+    setComparison({ kind: "single", meta: d, content: d.content });
   };
 
   const deleteDraft = async (id: number) => {
@@ -79,7 +115,78 @@ export function VaultBrowser() {
       const r = await api.draftsList(activePath);
       setDrafts(r.drafts);
     }
-    if (draftViewing?.meta.id === id) setDraftViewing(null);
+    setSelectedDrafts((cur) => {
+      const next = new Set(cur);
+      next.delete(id);
+      return next;
+    });
+    if (
+      comparison &&
+      comparison.kind === "single" &&
+      comparison.meta.id === id
+    ) {
+      setComparison(null);
+    }
+  };
+
+  const toggleSelect = (id: number) => {
+    setSelectedDrafts((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        if (next.size >= 2) {
+          // Drop oldest selection to keep cap at 2.
+          const first = next.values().next().value;
+          if (first !== undefined) next.delete(first);
+        }
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const draftLabel = (meta: DraftMeta) =>
+    `Snapshot ${new Date(meta.created_at).toLocaleString()}`;
+
+  const diffSelected = async () => {
+    const ids = Array.from(selectedDrafts);
+    if (ids.length !== 2) return;
+    const [id0, id1] = ids;
+    if (id0 === undefined || id1 === undefined) return;
+    try {
+      const [a, b] = await Promise.all([
+        api.draftGet(id0),
+        api.draftGet(id1),
+      ]);
+      // Older snapshot on the left.
+      const [olderMeta, newerMeta] =
+        a.created_at <= b.created_at ? [a, b] : [b, a];
+      setComparison({
+        kind: "diff",
+        left: { label: draftLabel(olderMeta), content: olderMeta.content },
+        right: { label: draftLabel(newerMeta), content: newerMeta.content },
+      });
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  };
+
+  const diffVsCurrent = async () => {
+    const ids = Array.from(selectedDrafts);
+    if (ids.length !== 1 || !file) return;
+    const [snapId] = ids;
+    if (snapId === undefined) return;
+    try {
+      const snap = await api.draftGet(snapId);
+      setComparison({
+        kind: "diff",
+        left: { label: draftLabel(snap), content: snap.content },
+        right: { label: `Current (${file.path})`, content: file.content },
+      });
+    } catch (e) {
+      setErr((e as Error).message);
+    }
   };
 
   const followWiki = async (target: string) => {
@@ -95,6 +202,7 @@ export function VaultBrowser() {
   return (
     <div className="grid grid-cols-[300px,1fr] gap-4 h-full max-w-[1500px] mx-auto">
       <aside className="card overflow-auto">
+        <RecentFiles onPick={setActivePath} />
         <h3 className="font-display text-lg mb-2">Vault</h3>
         {!tree && <p className="text-muted text-sm">Loading…</p>}
         {tree && (
@@ -154,40 +262,109 @@ export function VaultBrowser() {
               {drafts.length === 0 && (
                 <p className="text-xs text-muted">No snapshots for this file.</p>
               )}
-              <ul className="space-y-1">
-                {drafts.map((d) => (
-                  <li
-                    key={d.id}
-                    className="flex items-center gap-2 text-xs font-mono p-1.5 border border-muted/20 rounded"
+              {drafts.length > 0 && (
+                <div className="flex flex-wrap gap-2 items-center text-xs">
+                  <span className="text-muted">
+                    {selectedDrafts.size === 0
+                      ? "Tick up to 2 snapshots to compare."
+                      : `${selectedDrafts.size} selected`}
+                  </span>
+                  <button
+                    className="btn btn-ghost text-xs"
+                    onClick={diffSelected}
+                    disabled={selectedDrafts.size !== 2}
                   >
-                    <span className="text-tealBright">
-                      {new Date(d.created_at).toLocaleString()}
-                    </span>
-                    <span className="text-muted">{(d.bytes / 1024).toFixed(1)} KB</span>
-                    {d.note && <span className="italic text-bg dark:text-paper">"{d.note}"</span>}
+                    Diff selected
+                  </button>
+                  <button
+                    className="btn btn-ghost text-xs"
+                    onClick={diffVsCurrent}
+                    disabled={selectedDrafts.size !== 1 || !file}
+                  >
+                    Diff vs current
+                  </button>
+                  {selectedDrafts.size > 0 && (
                     <button
-                      onClick={() => viewDraft(d.id)}
-                      className="btn btn-ghost text-xs ml-auto"
-                    >
-                      view
-                    </button>
-                    <button
-                      onClick={() => deleteDraft(d.id)}
                       className="btn btn-ghost text-xs"
+                      onClick={() => setSelectedDrafts(new Set())}
                     >
-                      delete
+                      Clear selection
                     </button>
-                  </li>
-                ))}
+                  )}
+                </div>
+              )}
+              <ul className="space-y-1">
+                {drafts.map((d) => {
+                  const isChecked = selectedDrafts.has(d.id);
+                  return (
+                    <li
+                      key={d.id}
+                      className="flex items-center gap-2 text-xs font-mono p-1.5 border border-muted/20 rounded"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => toggleSelect(d.id)}
+                        aria-label={`Select snapshot from ${new Date(d.created_at).toLocaleString()} for diff`}
+                        className="cursor-pointer"
+                      />
+                      <span className="text-tealBright">
+                        {new Date(d.created_at).toLocaleString()}
+                      </span>
+                      <span className="text-muted">
+                        {(d.bytes / 1024).toFixed(1)} KB
+                      </span>
+                      {d.note && (
+                        <span className="italic text-bg dark:text-paper">
+                          "{d.note}"
+                        </span>
+                      )}
+                      <button
+                        onClick={() => viewDraft(d.id)}
+                        className="btn btn-ghost text-xs ml-auto"
+                      >
+                        view
+                      </button>
+                      <button
+                        onClick={() => deleteDraft(d.id)}
+                        className="btn btn-ghost text-xs"
+                      >
+                        delete
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
-              {draftViewing && (
+              {comparison && comparison.kind === "single" && (
                 <div className="card bg-paper/60 dark:bg-bg/60 max-h-96 overflow-auto">
-                  <div className="text-xs text-tealBright mb-1">
-                    Snapshot {new Date(draftViewing.meta.created_at).toLocaleString()}
+                  <div className="flex items-baseline gap-2 mb-1">
+                    <div className="text-xs text-tealBright">
+                      Snapshot{" "}
+                      {new Date(comparison.meta.created_at).toLocaleString()}
+                    </div>
+                    <button
+                      className="btn btn-ghost text-xs ml-auto"
+                      onClick={() => setComparison(null)}
+                    >
+                      close
+                    </button>
                   </div>
                   <pre className="whitespace-pre-wrap text-sm font-ui">
-                    {draftViewing.content}
+                    {comparison.content}
                   </pre>
+                </div>
+              )}
+              {comparison && comparison.kind === "diff" && (
+                <div className="space-y-1">
+                  <div className="flex">
+                    <button
+                      className="btn btn-ghost text-xs ml-auto"
+                      onClick={() => setComparison(null)}
+                    >
+                      close diff
+                    </button>
+                  </div>
+                  <DiffView left={comparison.left} right={comparison.right} />
                 </div>
               )}
             </div>

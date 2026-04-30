@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api, type SearchHit, type SearchMode } from "../api.ts";
+import { searchHistory, useSearchHistory } from "../recents.ts";
 
 export function SearchPanel() {
   const [query, setQuery] = useState("");
@@ -10,20 +11,32 @@ export function SearchPanel() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const { entries: history, clear: clearHistory } = useSearchHistory();
 
-  const run = async () => {
-    if (!query.trim()) return;
+  const runWith = async (rawQuery: string, runMode: SearchMode) => {
+    const trimmed = rawQuery.trim();
+    if (!trimmed) return;
     setBusy(true);
     setErr(null);
     try {
-      const res = await api.search(query.trim(), mode, topK, 40, useRerank);
+      const res = await api.search(trimmed, runMode, topK, 40, useRerank);
       setHits(res.hits);
       setExpanded(new Set());
+      searchHistory.push({ query: trimmed, mode: runMode, ts: Date.now() });
     } catch (e) {
       setErr((e as Error).message);
     } finally {
       setBusy(false);
     }
+  };
+
+  const run = () => runWith(query, mode);
+
+  const applyHistory = (entry: { query: string; mode: string }) => {
+    setQuery(entry.query);
+    const nextMode = entry.mode as SearchMode;
+    setMode(nextMode);
+    void runWith(entry.query, nextMode);
   };
 
   const toggle = (id: number) => {
@@ -89,6 +102,38 @@ export function SearchPanel() {
 
       {err && (
         <div className="bg-red-100 text-red-900 dark:bg-red-900/40 dark:text-red-200 text-sm p-3 rounded">{err}</div>
+      )}
+
+      {history.length > 0 && (
+        <div className="card space-y-2">
+          <div className="flex items-center gap-2">
+            <h4 className="text-xs uppercase tracking-wide text-muted font-mono">
+              Recent searches
+            </h4>
+            <button
+              type="button"
+              onClick={clearHistory}
+              className="ml-auto text-xs text-muted hover:text-tealBright"
+            >
+              Clear history
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {history.slice(0, 8).map((entry) => (
+              <button
+                key={`${entry.mode}::${entry.query}::${entry.ts}`}
+                type="button"
+                onClick={() => applyHistory(entry)}
+                disabled={busy}
+                title={`${entry.mode}: ${entry.query}`}
+                className="text-xs font-mono px-2 py-1 rounded-full border border-muted/30 hover:border-tealBright/60 hover:text-tealBright max-w-[18rem] truncate"
+              >
+                <span className="text-muted mr-1">{entry.mode}:</span>
+                {entry.query}
+              </button>
+            ))}
+          </div>
+        </div>
       )}
 
       <div className="space-y-2">

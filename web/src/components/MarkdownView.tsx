@@ -5,6 +5,7 @@
 import { useMemo } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { findCitations, goToVaultPath } from "../citations.ts";
 
 type Props = {
   content: string;
@@ -26,8 +27,52 @@ function transformWikilinks(input: string): string {
   });
 }
 
+// Wrap qualified vault path citations (Books/.../foo.md, Styles/..., etc) as
+// markdown links so the `a` override below routes them to the Vault tab.
+// We only operate on segments OUTSIDE existing markdown links, to avoid
+// double-wrapping a path that's already linked. We split on `[label](href)`
+// fences (and code spans) and only transform the gaps between them.
+const MD_LINK_OR_CODE = /(\[[^\]]*\]\([^)]*\))|(`[^`]*`)/g;
+
+function transformVaultCitations(input: string): string {
+  // Preserve existing markdown links and inline code as-is; only scan plain spans.
+  const out: string[] = [];
+  let cursor = 0;
+  for (const match of input.matchAll(MD_LINK_OR_CODE)) {
+    const idx = match.index ?? 0;
+    if (idx > cursor) {
+      out.push(replaceCitationsInSpan(input.slice(cursor, idx)));
+    }
+    out.push(match[0]);
+    cursor = idx + match[0].length;
+  }
+  if (cursor < input.length) {
+    out.push(replaceCitationsInSpan(input.slice(cursor)));
+  }
+  return out.join("");
+}
+
+function replaceCitationsInSpan(span: string): string {
+  const cites = findCitations(span);
+  if (cites.length === 0) return span;
+  let result = "";
+  let last = 0;
+  for (const c of cites) {
+    result += span.slice(last, c.start);
+    const encoded = encodeURIComponent(c.path);
+    // Display the path verbatim; href routes to vault navigation handler.
+    result += `[${c.path}](#vault:${encoded})`;
+    last = c.end;
+  }
+  result += span.slice(last);
+  return result;
+}
+
 export function MarkdownView({ content, onWikiClick, className }: Props) {
-  const transformed = useMemo(() => transformWikilinks(content), [content]);
+  const transformed = useMemo(
+    () => transformVaultCitations(transformWikilinks(content)),
+    [content],
+  );
 
   const components: Components = useMemo(
     () => ({
@@ -180,6 +225,22 @@ export function MarkdownView({ content, onWikiClick, className }: Props) {
               className="inline px-1 rounded text-tealBright hover:bg-tealBright/20 font-ui"
             >
               [[{children}]]
+            </button>
+          );
+        }
+        if (href && href.startsWith("#vault:")) {
+          const path = decodeURIComponent(href.slice("#vault:".length));
+          return (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                goToVaultPath(path);
+              }}
+              className="inline px-1 rounded text-tealBright hover:bg-tealBright/20 font-mono text-xs"
+              title={`Open in Vault: ${path}`}
+            >
+              {children}
             </button>
           );
         }
