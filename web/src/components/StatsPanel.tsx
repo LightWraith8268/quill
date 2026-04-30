@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, auth, type ReindexResult, type Stats } from "../api.ts";
+import { WordCountDashboard } from "./WordCountDashboard.tsx";
 
 type ProbeResult = { ok: boolean; latencyMs: number; error?: string };
 type DbProbe = { ok: boolean; sizeBytes: number; error?: string };
@@ -32,7 +33,7 @@ async function authFetch<T>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-export function StatsPanel() {
+export function StatsPanel({ activeStoryId }: { activeStoryId: number | null }) {
   const [stats, setStats] = useState<Stats | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [reindexing, setReindexing] = useState(false);
@@ -113,6 +114,10 @@ export function StatsPanel() {
 
       <HealthCard />
       <ErrorsCard />
+
+      {activeStoryId !== null && (
+        <WordCountDashboard storyId={activeStoryId} />
+      )}
 
       {err && <div className="bg-red-100 text-red-900 dark:bg-red-900/40 dark:text-red-200 text-sm p-3 rounded">{err}</div>}
     </div>

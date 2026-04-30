@@ -1,7 +1,7 @@
 // Read-only vault helpers: directory tree, file read with frontmatter + content,
 // entity scan (wikilinks + tags + frontmatter title/aliases).
 
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readdir, readFile, stat, writeFile, mkdir } from "node:fs/promises";
 import { join, relative, sep, dirname, basename } from "node:path";
 import type { Config } from "./config.ts";
 
@@ -219,3 +219,35 @@ export async function resolveWikiTarget(
 }
 
 export { dirname };
+
+// ===== Write support =====
+// Whitelist top-level dirs that may receive writes from the API.
+// Never `Styles/**` or vault-root config files.
+const WRITABLE_PREFIXES = ["Books/", "Story Ideas/", "Uncensored/"];
+
+export async function writeVaultFile(
+  cfg: Config,
+  rel: string,
+  content: string
+): Promise<{ bytes: number; mtime: number }> {
+  const safe = sanitizeRel(rel);
+  if (!WRITABLE_PREFIXES.some((p) => safe.startsWith(p))) {
+    throw new Error(
+      "writes restricted to Books/**, Story Ideas/**, Uncensored/**"
+    );
+  }
+  if (!/\.(md|markdown|txt)$/i.test(safe)) {
+    throw new Error("write target must be a .md/.markdown/.txt file");
+  }
+  const abs = join(cfg.VAULT_PATH, safe);
+  // Ensure path stays inside vault after join (defense-in-depth)
+  const normVault = cfg.VAULT_PATH.replace(/\\/g, "/").replace(/\/$/, "");
+  const normAbs = abs.replace(/\\/g, "/");
+  if (!normAbs.startsWith(normVault + "/")) {
+    throw new Error("path escapes vault");
+  }
+  await mkdir(dirname(abs), { recursive: true });
+  await writeFile(abs, content, "utf-8");
+  const st = await stat(abs);
+  return { bytes: st.size, mtime: Math.floor(st.mtimeMs) };
+}

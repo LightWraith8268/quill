@@ -25,13 +25,15 @@ import { listMessages, clearMessages } from "./messages.ts";
 import { runChat, runChatRegenerate } from "./chat.ts";
 import type { AgentSelection } from "./agents/router.ts";
 import { listWorkflows, getWorkflow } from "./workflows.ts";
-import { vaultTree, readVaultFile, scanEntities, resolveWikiTarget } from "./vault.ts";
+import { vaultTree, readVaultFile, scanEntities, resolveWikiTarget, writeVaultFile } from "./vault.ts";
 import {
   createDraft,
   listAllDrafts,
   listDraftsForFile,
   getDraft,
   deleteDraft,
+  countWordsByPathTimeline,
+  wordCount,
 } from "./drafts.ts";
 import { checkHealth } from "./health.ts";
 import { logError, recentErrors } from "./errlog.ts";
@@ -84,6 +86,20 @@ const WorkflowRunBody = z.object({
 const DraftCreateBody = z.object({
   filePath: z.string().min(1),
   note: z.string().optional(),
+});
+
+const VaultWriteBody = z.object({
+  path: z.string().min(1),
+  content: z.string(),
+  snapshotNote: z.string().optional(),
+});
+
+const VaultInsertBody = z.object({
+  path: z.string().min(1),
+  text: z.string().min(1),
+  mode: z.enum(["append", "prepend", "at-line"]),
+  line: z.number().int().positive().optional(),
+  snapshotNote: z.string().optional(),
 });
 
 export function buildApp(cfg: Config) {
@@ -266,6 +282,89 @@ export function buildApp(cfg: Config) {
     return c.json({ target, path });
   });
 
+  app.post("/api/vault/write", async (c) => {
+    const parsed = VaultWriteBody.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return c.json({ error: "bad request", issues: parsed.error.flatten() }, 400);
+    const { path, content, snapshotNote } = parsed.data;
+    let snapshotId: number | undefined;
+    try {
+      const existing = await readVaultFile(cfg, path);
+      const d = createDraft(db, {
+        filePath: path,
+        content: existing.content,
+        note: snapshotNote ?? "auto: before insert",
+      });
+      snapshotId = d.id;
+    } catch {
+      // file does not exist yet → no snapshot
+    }
+    try {
+      const out = await writeVaultFile(cfg, path, content);
+      return c.json({ ok: true, bytes: out.bytes, mtime: out.mtime, snapshotId });
+    } catch (e) {
+      logError("http.vault.write", e);
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
+    }
+  });
+
+  app.post("/api/vault/insert", async (c) => {
+    const parsed = VaultInsertBody.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return c.json({ error: "bad request", issues: parsed.error.flatten() }, 400);
+    const { path, text, mode, line, snapshotNote } = parsed.data;
+
+    let existingContent = "";
+    let fileExists = false;
+    try {
+      const existing = await readVaultFile(cfg, path);
+      existingContent = existing.content;
+      fileExists = true;
+    } catch {
+      fileExists = false;
+    }
+
+    let nextContent: string;
+    if (mode === "append") {
+      const sep = existingContent.length === 0 || existingContent.endsWith("\n") ? "" : "\n";
+      const trail = text.endsWith("\n") ? "" : "\n";
+      nextContent = existingContent + sep + text + trail;
+    } else if (mode === "prepend") {
+      nextContent = existingContent.length === 0 ? (text.endsWith("\n") ? text : text + "\n") : text + "\n\n" + existingContent;
+    } else {
+      // at-line: 1-based; 1 = top, lines.length+1 = end
+      const lines = existingContent.length === 0 ? [] : existingContent.split("\n");
+      const targetLine = line ?? 1;
+      const maxLine = lines.length + 1;
+      if (targetLine < 1 || targetLine > maxLine) {
+        return c.json({ error: `line ${targetLine} out of bounds (1..${maxLine})` }, 400);
+      }
+      const insertText = text.endsWith("\n") ? text : text + "\n";
+      const insertLines = insertText.split("\n");
+      // Drop trailing empty from split if insertText ended with \n
+      if (insertLines.length > 0 && insertLines[insertLines.length - 1] === "") insertLines.pop();
+      const before = lines.slice(0, targetLine - 1);
+      const after = lines.slice(targetLine - 1);
+      nextContent = [...before, ...insertLines, ...after].join("\n");
+    }
+
+    let snapshotId: number | undefined;
+    if (fileExists) {
+      const d = createDraft(db, {
+        filePath: path,
+        content: existingContent,
+        note: snapshotNote ?? "auto: before insert",
+      });
+      snapshotId = d.id;
+    }
+
+    try {
+      const out = await writeVaultFile(cfg, path, nextContent);
+      return c.json({ ok: true, bytes: out.bytes, mtime: out.mtime, snapshotId });
+    } catch (e) {
+      logError("http.vault.insert", e);
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
+    }
+  });
+
   // ===== Lore / entities =====
 
   app.get("/api/lore/entities", async (c) => {
@@ -310,6 +409,71 @@ export function buildApp(cfg: Config) {
     const id = Number(c.req.param("id"));
     const ok = deleteDraft(db, id);
     return c.json({ ok });
+  });
+
+  // ===== Story word counts / pacing =====
+
+  app.get("/api/stories/:id/wordcount", async (c) => {
+    const id = Number(c.req.param("id"));
+    const story = getStory(db, id);
+    if (!story) return c.json({ error: "story not found" }, 404);
+
+    // Collect all .md files under story.path from the vault tree
+    const tree = await vaultTree(cfg);
+    const prefix = story.path.endsWith("/") ? story.path : story.path + "/";
+    const collected: { path: string; mtime: number; bytes: number }[] = [];
+    const visit = (n: { kind: string; path: string; size?: number; mtime?: number; children?: unknown[] }) => {
+      if (n.kind === "file") {
+        if (
+          (n.path === story.path || n.path.startsWith(prefix)) &&
+          /\.(md|markdown)$/i.test(n.path)
+        ) {
+          collected.push({
+            path: n.path,
+            mtime: n.mtime ?? 0,
+            bytes: n.size ?? 0,
+          });
+        }
+      }
+      if (n.children) {
+        for (const child of n.children as typeof n[]) visit(child);
+      }
+    };
+    visit(tree as unknown as Parameters<typeof visit>[0]);
+
+    let totalWords = 0;
+    const files = await Promise.all(
+      collected.map(async (f) => {
+        let currentWords = 0;
+        let currentBytes = f.bytes;
+        let currentMtime = f.mtime;
+        try {
+          const file = await readVaultFile(cfg, f.path);
+          currentWords = wordCount(file.content);
+          currentBytes = file.bytes;
+          currentMtime = file.mtime;
+        } catch {
+          // unreadable — skip word count
+        }
+        const timeline = countWordsByPathTimeline(db, f.path);
+        totalWords += currentWords;
+        return {
+          path: f.path,
+          currentWords,
+          currentBytes,
+          currentMtime,
+          timeline,
+        };
+      })
+    );
+
+    files.sort((a, b) => a.path.localeCompare(b.path));
+
+    return c.json({
+      story: { id: story.id, name: story.name, path: story.path },
+      files,
+      totalWords,
+    });
   });
 
   // ===== Workflows =====

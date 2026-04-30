@@ -15,6 +15,7 @@ import {
 import { StoryConfig } from "./StoryConfig.tsx";
 import { MarkdownView } from "./MarkdownView.tsx";
 import { PinnedContext } from "./PinnedContext.tsx";
+import { InsertModal } from "./InsertModal.tsx";
 import { usePins, clearPins } from "../pins.ts";
 
 type Props = {
@@ -42,6 +43,8 @@ export function ChatPanel({ storyId }: Props) {
   const [usage, setUsage] = useState<UsageResponse | null>(null);
   const [regeneratingId, setRegeneratingId] = useState<number | null>(null);
   const [regenStreamText, setRegenStreamText] = useState("");
+  const [insertingFromId, setInsertingFromId] = useState<number | null>(null);
+  const [insertOk, setInsertOk] = useState<string | null>(null);
   const { formatForPrompt } = usePins(storyId ?? 0);
   const turnStartRef = useRef<number>(0);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -208,6 +211,11 @@ export function ChatPanel({ storyId }: Props) {
         {messages.length === 0 && !streamText && (
           <p className="text-muted text-sm">No messages yet — start the conversation.</p>
         )}
+        {insertOk && (
+          <div className="bg-teal/20 text-paper border border-tealBright/40 text-xs p-2 rounded">
+            Inserted into <span className="font-mono">{insertOk}</span>.
+          </div>
+        )}
         {messages.map((m) => (
           <MessageBubble
             key={m.id}
@@ -216,6 +224,7 @@ export function ChatPanel({ storyId }: Props) {
             regenStreamText={regeneratingId === m.id ? regenStreamText : ""}
             isDisabled={busy || regeneratingId !== null}
             onRegenerate={handleRegenerate}
+            onInsert={() => setInsertingFromId(m.id)}
           />
         ))}
         {streamText && (
@@ -271,6 +280,22 @@ export function ChatPanel({ storyId }: Props) {
           </div>
         </details>
       )}
+
+      {insertingFromId !== null && (() => {
+        const target = messages.find((mm) => mm.id === insertingFromId);
+        if (!target) return null;
+        return (
+          <InsertModal
+            text={target.content}
+            defaultPath={story?.path ? `${story.path.replace(/\/$/, "")}/` : "Books/"}
+            onClose={() => setInsertingFromId(null)}
+            onInserted={(p) => {
+              setInsertOk(p);
+              setTimeout(() => setInsertOk(null), 5000);
+            }}
+          />
+        );
+      })()}
 
       <div className="card">
         {storyId && <PinnedContext storyId={storyId} />}
@@ -382,6 +407,7 @@ type BubbleProps = {
   regenStreamText?: string;
   isDisabled?: boolean;
   onRegenerate?: (fromId: number, agent: AgentSelection, editedContent?: string) => void;
+  onInsert?: () => void;
 };
 
 function MessageBubble({
@@ -391,6 +417,7 @@ function MessageBubble({
   regenStreamText,
   isDisabled,
   onRegenerate,
+  onInsert,
 }: BubbleProps) {
   const mine = m.role === "user";
   const [hover, setHover] = useState(false);
@@ -438,27 +465,37 @@ function MessageBubble({
                 Edit
               </button>
             ) : (
-              <div className="relative">
-                <button
-                  onClick={() => setPickerOpen((v) => !v)}
-                  className="px-2 py-0.5 text-xs rounded bg-bg dark:bg-paper border border-muted/30 text-muted hover:text-tealBright hover:border-tealBright"
-                >
-                  Rerun…
-                </button>
-                {pickerOpen && (
-                  <div className="absolute top-full mt-1 left-0 flex gap-1 bg-bg dark:bg-paper border border-muted/30 rounded p-1 shadow-lg z-20 whitespace-nowrap">
-                    {(["claude", "codex", "gemini"] as AgentName[]).map((ag) => (
-                      <button
-                        key={ag}
-                        onClick={() => pickRerun(ag)}
-                        className="px-2 py-0.5 text-xs rounded hover:bg-teal/30 hover:text-paper capitalize"
-                      >
-                        {ag}
-                      </button>
-                    ))}
-                  </div>
+              <>
+                <div className="relative">
+                  <button
+                    onClick={() => setPickerOpen((v) => !v)}
+                    className="px-2 py-0.5 text-xs rounded bg-bg dark:bg-paper border border-muted/30 text-muted hover:text-tealBright hover:border-tealBright"
+                  >
+                    Rerun…
+                  </button>
+                  {pickerOpen && (
+                    <div className="absolute top-full mt-1 left-0 flex gap-1 bg-bg dark:bg-paper border border-muted/30 rounded p-1 shadow-lg z-20 whitespace-nowrap">
+                      {(["claude", "codex", "gemini"] as AgentName[]).map((ag) => (
+                        <button
+                          key={ag}
+                          onClick={() => pickRerun(ag)}
+                          className="px-2 py-0.5 text-xs rounded hover:bg-teal/30 hover:text-paper capitalize"
+                        >
+                          {ag}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {onInsert && (
+                  <button
+                    onClick={onInsert}
+                    className="px-2 py-0.5 text-xs rounded bg-bg dark:bg-paper border border-muted/30 text-muted hover:text-tealBright hover:border-tealBright"
+                  >
+                    Insert…
+                  </button>
                 )}
-              </div>
+              </>
             )}
           </div>
         )}

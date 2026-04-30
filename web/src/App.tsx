@@ -117,7 +117,7 @@ export default function App() {
         {tab === "vault" && <VaultBrowser />}
         {tab === "lore" && <LoreBrowser />}
         {tab === "styles" && <StyleBrowser />}
-        {tab === "stats" && <StatsPanel />}
+        {tab === "stats" && <StatsPanel activeStoryId={activeStoryId} />}
       </main>
     </div>
   );

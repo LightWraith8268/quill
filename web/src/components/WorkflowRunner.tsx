@@ -3,6 +3,8 @@
 
 import { useEffect, useState } from "react";
 import { api, workflowStream, type WorkflowDef } from "../api.ts";
+import { SweepReport } from "./SweepReport.tsx";
+import { goToVaultPath } from "../citations.ts";
 
 type Props = {
   storyId: number;
@@ -16,6 +18,7 @@ export function WorkflowRunner({ storyId, onComplete, onCancel }: Props) {
   const [inputs, setInputs] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [streamText, setStreamText] = useState("");
+  const [lastResult, setLastResult] = useState<{ workflowId: string; text: string } | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -30,6 +33,7 @@ export function WorkflowRunner({ storyId, onComplete, onCancel }: Props) {
     }
     setInputs(init);
     setStreamText("");
+    setLastResult(null);
     setErr(null);
   };
 
@@ -44,6 +48,7 @@ export function WorkflowRunner({ storyId, onComplete, onCancel }: Props) {
     setBusy(true);
     setErr(null);
     setStreamText("");
+    setLastResult(null);
     try {
       let buf = "";
       for await (const ev of workflowStream(storyId, active.id, inputs)) {
@@ -56,7 +61,13 @@ export function WorkflowRunner({ storyId, onComplete, onCancel }: Props) {
           throw new Error(data.error);
         } else if (ev.event === "done") {
           // Workflow message + assistant reply persisted server-side.
-          onComplete();
+          if (active.id === "continuity_sweep") {
+            // Hold the result so the structured report can render. User clicks
+            // "Done" to confirm and return to chat.
+            setLastResult({ workflowId: active.id, text: buf });
+          } else {
+            onComplete();
+          }
           return;
         }
       }
@@ -168,16 +179,35 @@ export function WorkflowRunner({ storyId, onComplete, onCancel }: Props) {
         </div>
       )}
 
+      {lastResult && lastResult.workflowId === "continuity_sweep" && (
+        <SweepReport
+          rawAssistantMessage={lastResult.text}
+          onJumpToFile={(path, line) => {
+            // Navigate to vault tab + file. line is informational; VaultBrowser
+            // currently consumes the path only, but we still log it for future
+            // line-anchor support.
+            void line;
+            goToVaultPath(path);
+          }}
+        />
+      )}
+
       <div className="flex gap-2">
-        <button
-          onClick={run}
-          disabled={busy}
-          className="btn btn-primary"
-        >
-          {busy ? "Running…" : "Run"}
-        </button>
+        {lastResult ? (
+          <button onClick={onComplete} className="btn btn-primary">
+            Done
+          </button>
+        ) : (
+          <button
+            onClick={run}
+            disabled={busy}
+            className="btn btn-primary"
+          >
+            {busy ? "Running…" : "Run"}
+          </button>
+        )}
         <button onClick={onCancel} disabled={busy} className="btn btn-ghost">
-          Cancel
+          {lastResult ? "Back to chat" : "Cancel"}
         </button>
       </div>
     </div>

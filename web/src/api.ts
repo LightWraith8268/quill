@@ -136,6 +136,22 @@ export const api = {
       `/vault/resolve?target=${encodeURIComponent(target)}`
     ),
   loreEntities: () => req<{ entities: Entity[] }>("/lore/entities"),
+  vaultWrite: (path: string, content: string, snapshotNote?: string) =>
+    req<VaultWriteResult>("/vault/write", {
+      method: "POST",
+      body: { path, content, snapshotNote },
+    }),
+  vaultInsert: (
+    path: string,
+    text: string,
+    mode: "append" | "prepend" | "at-line",
+    line?: number,
+    snapshotNote?: string
+  ) =>
+    req<VaultWriteResult>("/vault/insert", {
+      method: "POST",
+      body: { path, text, mode, line, snapshotNote },
+    }),
   draftsList: (path?: string) =>
     req<{ drafts: DraftMeta[] }>(
       path ? `/drafts?path=${encodeURIComponent(path)}` : "/drafts"
@@ -145,6 +161,8 @@ export const api = {
   draftGet: (id: number) => req<DraftFull>(`/drafts/${id}`),
   draftDelete: (id: number) =>
     req<{ ok: boolean }>(`/drafts/${id}`, { method: "DELETE" }),
+  storyWordCount: (id: number) =>
+    req<StoryWordCount>(`/stories/${id}/wordcount`),
   usage: (storyId?: number, since?: number) => {
     const qs = new URLSearchParams();
     if (storyId != null) qs.set("storyId", String(storyId));
@@ -218,6 +236,31 @@ export type DraftMeta = {
 };
 export type DraftFull = DraftMeta & { content: string };
 
+export type WordCountSnapshot = {
+  ts: number;
+  words: number;
+  bytes: number;
+  note: string | null;
+};
+export type StoryWordCountFile = {
+  path: string;
+  currentWords: number;
+  currentBytes: number;
+  currentMtime: number;
+  timeline: WordCountSnapshot[];
+};
+export type StoryWordCount = {
+  story: { id: number; name: string; path: string };
+  files: StoryWordCountFile[];
+  totalWords: number;
+};
+export type VaultWriteResult = {
+  ok: boolean;
+  bytes: number;
+  mtime: number;
+  snapshotId?: number;
+};
+
 export type WorkflowField = {
   name: string;
   label: string;
@@ -234,6 +277,7 @@ export type WorkflowDef = {
   description: string;
   agent: AgentName;
   fields: WorkflowField[];
+  outputSchema?: unknown;
 };
 
 /**

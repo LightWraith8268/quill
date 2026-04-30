@@ -27,7 +27,35 @@ export type WorkflowDef = {
   fields: WorkflowField[];
   /** Build the chat message that gets sent. */
   buildPrompt: (inputs: Record<string, string>) => string;
+  /** Optional JSON schema describing structured response payload (for UI rendering). */
+  outputSchema?: object;
 };
+
+const CONTINUITY_SWEEP_OUTPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    summary: { type: "string" },
+    issues: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          category: {
+            type: "string",
+            enum: ["age", "fact", "voice", "terminology", "timeline", "other"],
+          },
+          severity: { type: "string", enum: ["high", "medium", "low"] },
+          file: { type: "string" },
+          line: { type: ["integer", "null"] },
+          problem: { type: "string" },
+          fix: { type: "string" },
+        },
+        required: ["category", "severity", "file", "problem", "fix"],
+      },
+    },
+  },
+  required: ["summary", "issues"],
+} as const;
 
 export const WORKFLOWS: WorkflowDef[] = [
   {
@@ -78,12 +106,44 @@ export const WORKFLOWS: WorkflowDef[] = [
         ``,
         `Flag any contradictions in: character ages and arc-state per book, established facts, voice consistency (Vesper / Zeta speech rules, Riko register progression, etc.), terminology and capitalization (Network, Ascendant, Wake State, Community), timeline.`,
         ``,
-        `For each issue, output one line in this format:`,
-        `\`<file>:<line>\` — <issue> — <proposed fix>`,
+        `Write your normal diagnostic prose first — narrative explanation of what you checked and what you found. Do not rewrite — diagnose only.${focus}`,
         ``,
-        `If you find no contradictions in a category, say so explicitly so I know it was checked. Do not rewrite — diagnose.${focus}`,
+        `=== STRUCTURED OUTPUT REQUIREMENT ===`,
+        ``,
+        `At the very end of your response, after all prose, output a SINGLE fenced JSON code block matching this exact schema:`,
+        ``,
+        "```json",
+        JSON.stringify(CONTINUITY_SWEEP_OUTPUT_SCHEMA, null, 2),
+        "```",
+        ``,
+        `The JSON block must be valid and parseable. Shape:`,
+        ``,
+        "```json",
+        `{`,
+        `  "summary": "one-paragraph overview of what was checked and the headline findings",`,
+        `  "issues": [`,
+        `    {`,
+        `      "category": "age" | "fact" | "voice" | "terminology" | "timeline" | "other",`,
+        `      "severity": "high" | "medium" | "low",`,
+        `      "file": "Books/Series/Book 1/Chapter 03.md",`,
+        `      "line": 142,`,
+        `      "problem": "Riko is described as 19, but CHARACTER_BIBLE.md sets her age at 21 in this book.",`,
+        `      "fix": "Change to 21, or update bible if intentional."`,
+        `    }`,
+        `  ]`,
+        `}`,
+        "```",
+        ``,
+        `Rules for the JSON block:`,
+        `- Use the EXACT category and severity enum values listed above (lowercase).`,
+        `- "file" must be the vault-relative path (e.g. "Books/Series/Book 1/Chapter 03.md").`,
+        `- "line" is the integer line number, or null if not applicable.`,
+        `- "problem" and "fix" are short prose strings.`,
+        `- If you found zero issues, "issues" must be an empty array [].`,
+        `- Output exactly ONE JSON code block. Any text outside the block is treated as narrative prose only.`,
       ].join("\n");
     },
+    outputSchema: CONTINUITY_SWEEP_OUTPUT_SCHEMA,
   },
   {
     id: "scene_drafter",
@@ -208,6 +268,7 @@ export function listWorkflows() {
     description: w.description,
     agent: w.agent,
     fields: w.fields,
+    outputSchema: w.outputSchema,
   }));
 }
 
