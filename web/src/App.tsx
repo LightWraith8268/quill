@@ -10,9 +10,18 @@ import { StoryPicker } from "./components/StoryPicker.tsx";
 import { WorkflowRunner } from "./components/WorkflowRunner.tsx";
 import { VaultBrowser } from "./components/VaultBrowser.tsx";
 import { LoreBrowser } from "./components/LoreBrowser.tsx";
+import { CharacterTimeline } from "./components/CharacterTimeline.tsx";
 import { VAULT_NAV_EVENT, VAULT_PENDING_KEY } from "./citations.ts";
 
-type Tab = "chat" | "workflows" | "search" | "vault" | "lore" | "styles" | "stats";
+type Tab =
+  | "chat"
+  | "workflows"
+  | "search"
+  | "vault"
+  | "lore"
+  | "characters"
+  | "styles"
+  | "stats";
 
 const ACTIVE_STORY_KEY = "quill.activeStoryId";
 
@@ -116,6 +125,9 @@ export default function App() {
         {tab === "search" && <SearchPanel activeStoryId={activeStoryId} />}
         {tab === "vault" && <VaultBrowser />}
         {tab === "lore" && <LoreBrowser />}
+        {tab === "characters" && (
+          <CharacterTimeline defaultSeries={null} />
+        )}
         {tab === "styles" && <StyleBrowser />}
         {tab === "stats" && <StatsPanel activeStoryId={activeStoryId} />}
       </main>

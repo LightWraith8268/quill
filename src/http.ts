@@ -26,6 +26,8 @@ import { runChat, runChatRegenerate } from "./chat.ts";
 import type { AgentSelection } from "./agents/router.ts";
 import { listWorkflows, getWorkflow } from "./workflows.ts";
 import { vaultTree, readVaultFile, scanEntities, resolveWikiTarget, writeVaultFile } from "./vault.ts";
+import { parseCharacterBible } from "./character_bible.ts";
+import { readdir, readFile, stat } from "node:fs/promises";
 import {
   createDraft,
   listAllDrafts,
@@ -66,6 +68,7 @@ const StoryUpsertBody = z.object({
 const StoryPatchBody = z.object({
   active_style: z.string().nullable().optional(),
   active_genres: z.array(z.string()).max(2).optional(),
+  active_scene_path: z.string().nullable().optional(),
 });
 
 const ChatBody = z.object({
@@ -371,6 +374,48 @@ export function buildApp(cfg: Config) {
   app.get("/api/lore/entities", async (c) => {
     const entities = await scanEntities(cfg);
     return c.json({ entities });
+  });
+
+  // ===== Character Bibles =====
+
+  app.get("/api/characters", async (c) => {
+    const booksDir = join(cfg.VAULT_PATH, "Books");
+    const out: { series: string; characterCount: number }[] = [];
+    try {
+      const seriesEntries = await readdir(booksDir, { withFileTypes: true });
+      for (const e of seriesEntries) {
+        if (!e.isDirectory()) continue;
+        const biblePath = join(booksDir, e.name, "CHARACTER_BIBLE.md");
+        try {
+          const st = await stat(biblePath);
+          if (st.isFile()) {
+            const content = await readFile(biblePath, "utf-8");
+            const characters = parseCharacterBible(content);
+            out.push({ series: e.name, characterCount: characters.length });
+          }
+        } catch {
+          /* no bible for this series */
+        }
+      }
+    } catch {
+      /* Books dir missing */
+    }
+    return c.json({ series: out });
+  });
+
+  app.get("/api/characters/:series", async (c) => {
+    const series = decodeURIComponent(c.req.param("series"));
+    const biblePath = join(cfg.VAULT_PATH, "Books", series, "CHARACTER_BIBLE.md");
+    try {
+      const content = await readFile(biblePath, "utf-8");
+      const characters = parseCharacterBible(content);
+      return c.json({ series, characters });
+    } catch (e) {
+      return c.json(
+        { error: `CHARACTER_BIBLE.md not found for series ${series}` },
+        404
+      );
+    }
   });
 
   // ===== Drafts (snapshots) =====

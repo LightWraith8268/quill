@@ -1,7 +1,15 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { getTheme, setTheme, type ThemeMode } from "../theme.ts";
 
-type Tab = "chat" | "workflows" | "search" | "vault" | "lore" | "styles" | "stats";
+type Tab =
+  | "chat"
+  | "workflows"
+  | "search"
+  | "vault"
+  | "lore"
+  | "characters"
+  | "styles"
+  | "stats";
 
 export function TopBar(props: {
   tab: Tab;
@@ -15,6 +23,7 @@ export function TopBar(props: {
     { id: "search", label: "Search" },
     { id: "vault", label: "Vault" },
     { id: "lore", label: "Lore" },
+    { id: "characters", label: "Characters" },
     { id: "styles", label: "Styles" },
     { id: "stats", label: "Stats" },
   ];

@@ -24,6 +24,7 @@ export type StoryRow = {
   series: string | null;
   active_style: string | null;
   active_genres: string;
+  active_scene_path: string | null;
   created_at: number;
   updated_at: number;
 };
@@ -38,7 +39,7 @@ function rowToStory(r: StoryRow): Story {
   } catch {
     /* noop */
   }
-  return { ...r, active_genres: genres };
+  return { ...r, active_genres: genres, active_scene_path: r.active_scene_path ?? null };
 }
 
 async function isDir(p: string): Promise<boolean> {
@@ -120,7 +121,11 @@ export function upsertStory(
 export function updateStory(
   db: DB,
   id: number,
-  patch: { active_style?: string | null; active_genres?: string[] }
+  patch: {
+    active_style?: string | null;
+    active_genres?: string[];
+    active_scene_path?: string | null;
+  }
 ): Story | null {
   const existing = getStory(db, id);
   if (!existing) return null;
@@ -129,15 +134,23 @@ export function updateStory(
       patch.active_style === undefined ? existing.active_style : patch.active_style,
     active_genres:
       patch.active_genres === undefined ? existing.active_genres : patch.active_genres.slice(0, 2),
+    active_scene_path:
+      patch.active_scene_path === undefined ? existing.active_scene_path : patch.active_scene_path,
   };
   const updated = db
-    .query<StoryRow, [string | null, string, number, number]>(
+    .query<StoryRow, [string | null, string, string | null, number, number]>(
       `UPDATE stories
-       SET active_style = ?, active_genres = ?, updated_at = ?
+       SET active_style = ?, active_genres = ?, active_scene_path = ?, updated_at = ?
        WHERE id = ?
        RETURNING *`
     )
-    .get(next.active_style, JSON.stringify(next.active_genres), Date.now(), id);
+    .get(
+      next.active_style,
+      JSON.stringify(next.active_genres),
+      next.active_scene_path,
+      Date.now(),
+      id
+    );
   return updated ? rowToStory(updated) : null;
 }
 

@@ -124,4 +124,17 @@ function migrate(db: DB, cfg: Config): void {
        )`
     );
   }
+
+  // Idempotent ALTER TABLE: stories.active_scene_path
+  const storyCols = db
+    .query<{ name: string }, []>("SELECT name FROM pragma_table_info('stories')")
+    .all()
+    .map((r) => r.name);
+  if (!storyCols.includes("active_scene_path")) {
+    try {
+      db.exec("ALTER TABLE stories ADD COLUMN active_scene_path TEXT");
+    } catch {
+      /* race: column may have been added by another connection */
+    }
+  }
 }

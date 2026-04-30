@@ -35,6 +35,7 @@ export type Story = {
   series: string | null;
   active_style: string | null;
   active_genres: string[];
+  active_scene_path: string | null;
   created_at: number;
   updated_at: number;
 };
@@ -119,8 +120,18 @@ export const api = {
   storyGet: (id: number) => req<Story>(`/stories/${id}`),
   storyPatch: (
     id: number,
-    patch: { active_style?: string | null; active_genres?: string[] }
+    patch: {
+      active_style?: string | null;
+      active_genres?: string[];
+      active_scene_path?: string | null;
+    }
   ) => req<Story>(`/stories/${id}`, { method: "PATCH", body: patch }),
+  charactersList: () =>
+    req<{ series: { series: string; characterCount: number }[] }>("/characters"),
+  charactersForSeries: (series: string) =>
+    req<{ series: string; characters: CharacterDef[] }>(
+      `/characters/${encodeURIComponent(series)}`
+    ),
   storyDelete: (id: number) =>
     req<{ ok: boolean }>(`/stories/${id}`, { method: "DELETE" }),
   storyMessages: (id: number) =>
@@ -261,6 +272,19 @@ export type DraftMeta = {
   created_at: number;
 };
 export type DraftFull = DraftMeta & { content: string };
+
+export type CharacterDef = {
+  name: string;
+  role: string | null;
+  tags: string[];
+  voiceSummary: string | null;
+  agePerBook: { book: string; age: string }[];
+  coreDrives: string[];
+  arc: { book: string; beats: string[] }[];
+  relationships: { partner: string; description: string }[];
+  writingTics: string[];
+  sections: { heading: string; content: string }[];
+};
 
 export type WordCountSnapshot = {
   ts: number;

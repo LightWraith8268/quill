@@ -1,9 +1,10 @@
 // Chat orchestration. Build per-story context (style + bibles + RAG hits + history),
 // stream from agent, persist messages.
 
-import { readFile } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { Config } from "./config.ts";
+import { readVaultFile } from "./vault.ts";
 import type { DB } from "./db.ts";
 import type { Story } from "./stories.ts";
 import { getStory } from "./stories.ts";
@@ -24,6 +25,43 @@ import { makeRecorder } from "./usage.ts";
 const HISTORY_TURNS = 12;
 const LORE_HITS = 5;
 const STYLE_LORE_PREVIEW_CHARS = 600;
+const ACTIVE_SCENE_LARGE_BYTES = 30 * 1024;
+const AUTO_SCENE_MTIME_WINDOW_MS = 30 * 60 * 1000;
+
+async function findRecentScene(
+  cfg: Config,
+  storyPath: string
+): Promise<{ relPath: string; mtimeMs: number } | null> {
+  const root = join(cfg.VAULT_PATH, storyPath);
+  let best: { relPath: string; mtimeMs: number } | null = null;
+  const walk = async (absDir: string, relDir: string): Promise<void> => {
+    let entries;
+    try {
+      entries = await readdir(absDir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (e.name.startsWith(".")) continue;
+      const abs = join(absDir, e.name);
+      const rel = relDir ? `${relDir}/${e.name}` : e.name;
+      if (e.isDirectory()) {
+        await walk(abs, rel);
+      } else if (e.isFile() && /\.(md|markdown)$/i.test(e.name)) {
+        try {
+          const st = await stat(abs);
+          if (!best || st.mtimeMs > best.mtimeMs) {
+            best = { relPath: `${storyPath}/${rel}`, mtimeMs: st.mtimeMs };
+          }
+        } catch {
+          /* skip */
+        }
+      }
+    }
+  };
+  await walk(root, "");
+  return best;
+}
 
 export type { AgentName } from "./agents/router.ts";
 
@@ -44,6 +82,7 @@ export type ContextUsage = {
   bibles: string[]; // file paths included
   loreHits: { path: string; heading: string | null; score: number }[];
   historyTurns: number;
+  activeScene?: { path: string; bytes: number; source: "pinned" | "auto-mtime" } | null;
 };
 
 export async function* runChat(
@@ -231,6 +270,7 @@ async function buildContext(
     bibles: [],
     loreHits: [],
     historyTurns: history.length,
+    activeScene: null,
   };
 
   parts.push(
@@ -284,8 +324,39 @@ async function buildContext(
     }
   }
 
+  // 2.5 Active scene file (pinned by user OR auto-detected via mtime)
+  let activeSceneBytes = 0;
+  let scenePath: string | null = story.active_scene_path ?? null;
+  let sceneSource: "pinned" | "auto-mtime" = "pinned";
+  if (!scenePath) {
+    try {
+      const recent = await findRecentScene(cfg, story.path);
+      if (recent && Date.now() - recent.mtimeMs <= AUTO_SCENE_MTIME_WINDOW_MS) {
+        scenePath = recent.relPath;
+        sceneSource = "auto-mtime";
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  if (scenePath) {
+    try {
+      const file = await readVaultFile(cfg, scenePath);
+      activeSceneBytes = file.bytes;
+      usage.activeScene = { path: scenePath, bytes: file.bytes, source: sceneSource };
+      parts.push(
+        `=== ACTIVE SCENE FILE: ${scenePath} ===`,
+        file.content,
+        ``
+      );
+    } catch {
+      /* file may have moved; skip silently */
+    }
+  }
+
   // 3. RAG retrieval — semantic lore search seeded by user message + recent assistant turn
-  try {
+  const skipRag = activeSceneBytes > ACTIVE_SCENE_LARGE_BYTES;
+  if (!skipRag) try {
     const last = history.slice(-2).map((m) => m.content).join("\n");
     const queryText = (last ? last + "\n" : "") + userMessage;
     const embedRec = makeRecorder(db, "voyage_embed", story.id);
