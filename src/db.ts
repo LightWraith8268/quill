@@ -163,6 +163,41 @@ function migrate(db: DB, cfg: Config): void {
     );
     CREATE INDEX IF NOT EXISTS idx_sessions_story ON time_sessions(story_id, started_at DESC);
 
+    CREATE TABLE IF NOT EXISTS inspirations (
+      id INTEGER PRIMARY KEY,
+      story_id INTEGER NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL CHECK(kind IN ('image','quote','link','note')),
+      url TEXT,
+      content TEXT,
+      caption TEXT,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_inspirations_story ON inspirations(story_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS submissions (
+      id INTEGER PRIMARY KEY,
+      story_id INTEGER NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+      agent TEXT NOT NULL,
+      agency TEXT,
+      sent_at INTEGER,
+      response_at INTEGER,
+      status TEXT NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','sent','partial','full','rejected','offer','withdrawn')),
+      notes TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_submissions_story ON submissions(story_id, sent_at DESC);
+
+    CREATE TABLE IF NOT EXISTS share_links (
+      id INTEGER PRIMARY KEY,
+      token TEXT NOT NULL UNIQUE,
+      file_path TEXT NOT NULL,
+      label TEXT,
+      expires_at INTEGER,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_share_token ON share_links(token);
+
     CREATE TABLE IF NOT EXISTS daily_word_log (
       id INTEGER PRIMARY KEY,
       story_id INTEGER NOT NULL REFERENCES stories(id) ON DELETE CASCADE,

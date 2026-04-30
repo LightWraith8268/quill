@@ -270,6 +270,27 @@ export const api = {
     ),
   calendarUrl: (storyId: number): string =>
     `/api/stories/${storyId}/calendar.ics`,
+  inspirationsList: (storyId: number) =>
+    req<{ inspirations: Inspiration[] }>(`/stories/${storyId}/inspirations`),
+  inspirationAdd: (
+    storyId: number,
+    body: { kind: "image" | "quote" | "link" | "note"; url?: string; content?: string; caption?: string }
+  ) => req<Inspiration>(`/stories/${storyId}/inspirations`, { method: "POST", body }),
+  inspirationDelete: (id: number) =>
+    req<{ ok: boolean }>(`/inspirations/${id}`, { method: "DELETE" }),
+  submissionsList: (storyId: number) =>
+    req<{ submissions: Submission[] }>(`/stories/${storyId}/submissions`),
+  submissionCreate: (storyId: number, body: { agent: string; agency?: string; notes?: string }) =>
+    req<Submission>(`/stories/${storyId}/submissions`, { method: "POST", body }),
+  submissionUpdate: (id: number, patch: Partial<Submission>) =>
+    req<Submission>(`/submissions/${id}`, { method: "PATCH", body: patch }),
+  submissionDelete: (id: number) =>
+    req<{ ok: boolean }>(`/submissions/${id}`, { method: "DELETE" }),
+  shareLinksList: () => req<{ links: ShareLink[] }>("/share-links"),
+  shareLinkCreate: (body: { filePath: string; label?: string; expiresAtMs?: number | null }) =>
+    req<ShareLink>("/share-links", { method: "POST", body }),
+  shareLinkDelete: (id: number) =>
+    req<{ ok: boolean }>(`/share-links/${id}`, { method: "DELETE" }),
   compileStory: async (
     storyId: number,
     format: "md" | "html" | "docx"
@@ -457,6 +478,36 @@ export type TimeSessionRow = {
   seconds: number;
   file_path: string | null;
 };
+export type Inspiration = {
+  id: number;
+  story_id: number;
+  kind: "image" | "quote" | "link" | "note";
+  url: string | null;
+  content: string | null;
+  caption: string | null;
+  created_at: number;
+};
+export type Submission = {
+  id: number;
+  story_id: number;
+  agent: string;
+  agency: string | null;
+  sent_at: number | null;
+  response_at: number | null;
+  status: "queued" | "sent" | "partial" | "full" | "rejected" | "offer" | "withdrawn";
+  notes: string | null;
+  created_at: number;
+  updated_at: number;
+};
+export type ShareLink = {
+  id: number;
+  token: string;
+  file_path: string;
+  label: string | null;
+  expires_at: number | null;
+  created_at: number;
+};
+
 export type ChapterBeats = {
   path: string;
   title: string;

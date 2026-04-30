@@ -61,6 +61,22 @@ import { buildBeats, loadPronunciationMap, savePronunciationMap } from "./beats.
 import { previewRename, applyRename } from "./rename.ts";
 import { buildIcsForStory } from "./ics.ts";
 import {
+  listInspirations,
+  addInspiration,
+  deleteInspiration,
+  listSubmissions,
+  createSubmission,
+  updateSubmission,
+  deleteSubmission,
+  createShareLink,
+  getShareLinkByToken,
+  listShareLinks,
+  revokeShareLink,
+  readSharedFile,
+  type InspirationKind,
+  type SubmissionStatus,
+} from "./extras.ts";
+import {
   listGoals,
   upsertGoal,
   deleteGoal,
@@ -231,6 +247,8 @@ export function buildApp(cfg: Config) {
   ): Promise<void | Response> => {
     if (!cfg.HTTP_TOKEN) return next();
     if (c.req.path === "/api/health") return next();
+    // Public share-link read endpoint — token in URL, not bearer
+    if (c.req.path.startsWith("/api/share/")) return next();
     const auth = c.req.header("Authorization") ?? "";
     const expected = `Bearer ${cfg.HTTP_TOKEN}`;
     if (auth !== expected) return c.json({ error: "unauthorized" }, 401);
@@ -852,6 +870,92 @@ export function buildApp(cfg: Config) {
           "Content-Type": "text/calendar; charset=utf-8",
           "Content-Disposition": `attachment; filename="${r.filename}"`,
         },
+      });
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 404);
+    }
+  });
+
+  // ===== Inspirations =====
+  app.get("/api/stories/:id/inspirations", (c) => {
+    const id = Number(c.req.param("id"));
+    return c.json({ inspirations: listInspirations(db, id) });
+  });
+  app.post("/api/stories/:id/inspirations", async (c) => {
+    const id = Number(c.req.param("id"));
+    const body = (await c.req.json().catch(() => ({}))) as {
+      kind?: string;
+      url?: string;
+      content?: string;
+      caption?: string;
+    };
+    if (!body.kind || !["image", "quote", "link", "note"].includes(body.kind)) {
+      return c.json({ error: "kind required" }, 400);
+    }
+    return c.json(addInspiration(db, id, body as { kind: InspirationKind }));
+  });
+  app.delete("/api/inspirations/:id", (c) => {
+    const id = Number(c.req.param("id"));
+    return c.json({ ok: deleteInspiration(db, id) });
+  });
+
+  // ===== Submissions =====
+  app.get("/api/stories/:id/submissions", (c) => {
+    const id = Number(c.req.param("id"));
+    return c.json({ submissions: listSubmissions(db, id) });
+  });
+  app.post("/api/stories/:id/submissions", async (c) => {
+    const id = Number(c.req.param("id"));
+    const body = (await c.req.json().catch(() => ({}))) as {
+      agent?: string;
+      agency?: string;
+      notes?: string;
+    };
+    if (!body.agent) return c.json({ error: "agent required" }, 400);
+    return c.json(createSubmission(db, id, body as { agent: string }));
+  });
+  app.patch("/api/submissions/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+    const body = await c.req.json().catch(() => ({}));
+    const r = updateSubmission(db, id, body);
+    if (!r) return c.json({ error: "not found" }, 404);
+    return c.json(r);
+  });
+  app.delete("/api/submissions/:id", (c) => {
+    const id = Number(c.req.param("id"));
+    return c.json({ ok: deleteSubmission(db, id) });
+  });
+
+  // ===== Share links =====
+  app.get("/api/share-links", (c) => c.json({ links: listShareLinks(db) }));
+  app.post("/api/share-links", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as {
+      filePath?: string;
+      label?: string;
+      expiresAtMs?: number | null;
+    };
+    if (!body.filePath) return c.json({ error: "filePath required" }, 400);
+    return c.json(createShareLink(db, body.filePath, body.label, body.expiresAtMs ?? null));
+  });
+  app.delete("/api/share-links/:id", (c) => {
+    const id = Number(c.req.param("id"));
+    return c.json({ ok: revokeShareLink(db, id) });
+  });
+  // Public read by token (auth bypassed via apiAuth /api/share/ exception)
+  app.get("/api/share/:token", async (c) => {
+    const token = c.req.param("token");
+    const link = getShareLinkByToken(db, token);
+    if (!link) return c.json({ error: "invalid token" }, 404);
+    if (link.expires_at && Date.now() > link.expires_at) {
+      return c.json({ error: "expired" }, 410);
+    }
+    try {
+      const r = await readSharedFile(cfg, link);
+      return c.json({
+        label: link.label,
+        filePath: link.file_path,
+        content: r.content,
+        bytes: r.bytes,
       });
     } catch (e) {
       return c.json({ error: e instanceof Error ? e.message : String(e) }, 404);

@@ -34,7 +34,42 @@ function loadActiveStoryId(): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function getShareToken(): string | null {
+  if (typeof window === "undefined") return null;
+  const m = window.location.search.match(/(?:^|[?&])share=([^&]+)/);
+  return m ? decodeURIComponent(m[1]!) : null;
+}
+
+function ShareView({ token }: { token: string }) {
+  const [data, setData] = useState<{ label: string | null; filePath: string; content: string } | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    fetch(`/api/share/${encodeURIComponent(token)}`)
+      .then(async (r) => {
+        if (!r.ok) throw new Error(await r.text());
+        return r.json();
+      })
+      .then(setData)
+      .catch((e: Error) => setErr(e.message));
+  }, [token]);
+  if (err) {
+    return (
+      <div className="max-w-2xl mx-auto p-6">
+        <p className="text-red-300">{err}</p>
+      </div>
+    );
+  }
+  if (!data) return <div className="p-6 text-muted">Loading…</div>;
+  return (
+    <div className="max-w-3xl mx-auto p-6">
+      <h1 className="font-display text-3xl mb-4">{data.label ?? data.filePath}</h1>
+      <pre className="whitespace-pre-wrap font-ui leading-relaxed">{data.content}</pre>
+    </div>
+  );
+}
+
 export default function App() {
+  const shareToken = getShareToken();
   const [authed, setAuthed] = useState<boolean>(Boolean(auth.get()));
   const [tab, setTab] = useState<Tab>("chat");
   const [bootError, setBootError] = useState<string | null>(null);
@@ -85,6 +120,8 @@ export default function App() {
     setActiveStoryId(s.id);
     setTab("chat");
   };
+
+  if (shareToken) return <ShareView token={shareToken} />;
 
   if (!authed) {
     return <Login onAuthed={() => setAuthed(true)} />;

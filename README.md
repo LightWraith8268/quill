@@ -100,6 +100,11 @@ quill tunnel                               Run cloudflared tunnel (cloudflared/c
 
 All API routes require `Authorization: Bearer <HTTP_TOKEN>`.
 
+## Roadmap notes (deferred)
+
+- **Multi-user collaboration** (#36 in design notes). Currently single-user (one bearer token). Multi-user requires per-user auth, permissions, presence, comment threads. Significant. Not in scope for v1.
+- **Self-hosted Whisper / local TTS** (#37). Voice-to-text uses the browser Web Speech API (cloud-routed). For full local privacy: install Whisper locally + bridge via `quill stt` CLI hook. Not in scope for v1.
+
 ## MCP tools
 
 Registered as the `quill` MCP server. Claude Code auto-spawns it.
