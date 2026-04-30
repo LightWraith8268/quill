@@ -80,6 +80,27 @@ export function OutlineView({ storyId }: Props) {
         >
           + Act
         </button>
+        <div className="flex gap-1">
+          <button
+            onClick={() => api.compileStory(storyId, "md").catch((e) => setErr((e as Error).message))}
+            className="btn btn-ghost text-xs"
+          >
+            ⇩ md
+          </button>
+          <button
+            onClick={() => api.compileStory(storyId, "html").catch((e) => setErr((e as Error).message))}
+            className="btn btn-ghost text-xs"
+          >
+            ⇩ html
+          </button>
+          <button
+            onClick={() => api.compileStory(storyId, "docx").catch((e) => setErr((e as Error).message))}
+            className="btn btn-ghost text-xs"
+            title="Requires pandoc on PATH"
+          >
+            ⇩ docx
+          </button>
+        </div>
       </div>
 
       {err && (

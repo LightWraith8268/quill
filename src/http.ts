@@ -53,6 +53,8 @@ import {
   type NodeStatus,
 } from "./outline.ts";
 import { buildReadingPass } from "./reading.ts";
+import { compileStory } from "./compile.ts";
+import { readFile as fsReadFile } from "node:fs/promises";
 import { buildStoryExport } from "./export.ts";
 
 const SearchBody = z.object({
@@ -716,6 +718,33 @@ export function buildApp(cfg: Config) {
   });
 
   // ===== Reading-pass =====
+
+  app.get("/api/stories/:id/compile", async (c) => {
+    const id = Number(c.req.param("id"));
+    const formatRaw = c.req.query("format") ?? "md";
+    const format = ["md", "html", "docx"].includes(formatRaw)
+      ? (formatRaw as "md" | "html" | "docx")
+      : "md";
+    try {
+      const r = await compileStory(cfg, db, id, format);
+      const buf = await fsReadFile(r.outAbs);
+      const mime =
+        format === "html"
+          ? "text/html; charset=utf-8"
+          : format === "docx"
+          ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          : "text/markdown; charset=utf-8";
+      return new Response(buf, {
+        headers: {
+          "Content-Type": mime,
+          "Content-Disposition": `attachment; filename="${r.filename}"`,
+          "X-Quill-Compile-Path": r.outAbs,
+        },
+      });
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
+    }
+  });
 
   app.get("/api/stories/:id/reading", async (c) => {
     const id = Number(c.req.param("id"));

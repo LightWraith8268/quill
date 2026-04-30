@@ -179,6 +179,35 @@ export const api = {
     }),
   readingPass: (storyId: number) =>
     req<ReadingPass>(`/stories/${storyId}/reading`),
+  compileStory: async (
+    storyId: number,
+    format: "md" | "html" | "docx"
+  ): Promise<{ filename: string; bytes: number }> => {
+    const t = auth.get();
+    const headers: Record<string, string> = {};
+    if (t) headers.Authorization = `Bearer ${t}`;
+    const res = await fetch(
+      `/api/stories/${storyId}/compile?format=${format}`,
+      { headers }
+    );
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`${res.status}: ${text}`);
+    }
+    const cd = res.headers.get("Content-Disposition") ?? "";
+    const m = cd.match(/filename="?([^"]+)"?/);
+    const filename = m?.[1] ?? `compiled.${format}`;
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    return { filename, bytes: blob.size };
+  },
   storyDelete: (id: number) =>
     req<{ ok: boolean }>(`/stories/${id}`, { method: "DELETE" }),
   storyMessages: (id: number) =>
