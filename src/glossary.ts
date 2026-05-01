@@ -1,5 +1,5 @@
 // Aggregate a glossary for a story / series:
-// - lexicon entries from active style profile (riley-e-antrobus + active genres)
+// - lexicon entries from active style profile (base + active genres)
 // - wikilink targets that appear ≥2 times in the series' files
 // - frontmatter `aliases` from any file under the series
 

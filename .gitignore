@@ -6,3 +6,6 @@ data/*.db-*
 dist/
 *.log
 .DS_Store
+cloudflared/config.yml
+cloudflared/*.json
+web/dist/

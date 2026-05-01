@@ -37,7 +37,7 @@ export function buildIcsForStory(
   const now = new Date();
   let uidCounter = 0;
   const uid = (): string =>
-    `${now.getTime()}-${storyId}-${uidCounter++}@quill.inkironapps`;
+    `${now.getTime()}-${storyId}-${uidCounter++}@quill.local`;
 
   // Deadline as a single all-day event
   const deadline = goals.find((g) => g.kind === "deadline");

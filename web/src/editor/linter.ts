@@ -1,6 +1,6 @@
 // Anti-pattern linter for the markdown editor. Decorates forbidden words,
 // excessive em-dashes, rule-of-three, "not X but Y", verbatim echoes.
-// Anti-pattern source: Styles/riley-e-antrobus.md anti-pattern bible.
+// Anti-pattern source: active base style profile in Styles/.
 
 import { RangeSetBuilder, type Extension } from "@codemirror/state";
 import {

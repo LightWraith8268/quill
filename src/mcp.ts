@@ -79,7 +79,7 @@ const TOOLS = [
   {
     name: "get_style",
     description:
-      "Load a full base style profile by name (e.g. 'riley-e-antrobus'). Returns the entire markdown — voice rules, anti-pattern bible, revision checklist.",
+      "Load a full base style profile by name (e.g. 'house-style'). Returns the entire markdown — voice rules, anti-pattern bible, revision checklist.",
     inputSchema: {
       type: "object",
       properties: { name: { type: "string" } },
@@ -107,7 +107,7 @@ const TOOLS = [
     inputSchema: {
       type: "object",
       properties: {
-        base: { type: "string", description: "Base profile name (e.g. 'riley-e-antrobus')" },
+        base: { type: "string", description: "Base profile name (e.g. 'house-style')" },
         genres: {
           type: "array",
           items: { type: "string" },

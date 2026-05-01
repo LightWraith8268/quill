@@ -1,3 +1,4 @@
+#!/usr/bin/env bun
 import { loadConfig } from "./config.ts";
 import { openDb } from "./db.ts";
 import { reindex } from "./reindex.ts";

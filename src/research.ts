@@ -64,7 +64,7 @@ export async function clipUrl(
   const res = await fetch(url, {
     headers: {
       "User-Agent":
-        "Mozilla/5.0 (Quill research clipper; +https://github.com/inkironapps/quill)",
+        "Mozilla/5.0 (Quill research clipper)",
     },
     redirect: "follow",
   });

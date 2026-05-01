@@ -30,10 +30,10 @@ Cloudflare account with a domain on Cloudflare DNS is required.
 
 3. **Route a hostname to the tunnel.**
 
-   Pick a hostname on your CF-managed domain, e.g. `quill.inkironapps.com`.
+   Pick a hostname on your CF-managed domain, e.g. `quill.example.com`.
 
    ```bash
-   cloudflared tunnel route dns quill quill.inkironapps.com
+   cloudflared tunnel route dns quill quill.example.com
    ```
 
    This creates a `CNAME` pointing the hostname at the tunnel.
@@ -57,9 +57,9 @@ Cloudflare account with a domain on Cloudflare DNS is required.
    **Add an application** → **Self-hosted**.
    - Application name: `Quill`
    - Subdomain: `quill`
-   - Domain: `inkironapps.com` (your domain)
+   - Domain: `example.com` (your domain)
    - **Identity providers**: enable email OTP and/or your SSO (Google, GitHub, etc).
-   - Add a **policy**: `Allow` if email matches your address (`padraig.antrobus@gmail.com`).
+   - Add a **policy**: `Allow` if email matches your address (`you@example.com`).
 
    Without this, the tunnel is publicly reachable. The Quill bearer token
    would still gate the API, but the SPA shell and any non-API paths

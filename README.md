@@ -1,6 +1,6 @@
 # Quill
 
-Writing orchestrator with RAG over an Obsidian vault. Sibling to [maestro](../maestro).
+Writing orchestrator with RAG over an Obsidian vault.
 
 Quill indexes your novels, lore, and brainstorm notes, then orchestrates Claude Code, Codex CLI, and Gemini CLI for drafting, structural critique, and full-manuscript continuity sweeps. Built around a single active story at a time, with composable style profiles (genre-neutral base + up to 2 genre overlays).
 
@@ -8,29 +8,63 @@ Quill indexes your novels, lore, and brainstorm notes, then orchestrates Claude 
 
 All build phases complete: scaffold → embed → search → HTTP API → MCP → web UI (chat / workflows / search / vault / lore / styles / stats) → Cloudflare Tunnel.
 
+## Requirements
+
+- [Bun](https://bun.sh) 1.1+
+- An [Obsidian](https://obsidian.md) vault (or any folder of `.md` files)
+- A [Voyage AI](https://dashboard.voyageai.com) API key (free tier: 200M tokens)
+- Optional: [Claude Code](https://claude.com/claude-code), [Codex CLI](https://github.com/openai/codex), and/or [Gemini CLI](https://github.com/google-gemini/gemini-cli) on `PATH`
+
 ## Setup
 
 ```bash
-cd D:/Coding/quill
+# 1. Clone + install
+git clone https://github.com/<you>/quill.git
+cd quill
 bun install
+(cd web && bun install && bun run build)   # SPA — Hono serves it from web/dist
 
+# 2. Configure
 cp .env.example .env
-# edit .env: set VAULT_PATH and VOYAGE_API_KEY (and rotate the example HTTP_TOKEN)
+# edit .env: set VAULT_PATH, VOYAGE_API_KEY, and HTTP_TOKEN (openssl rand -hex 24)
 
-bun run src/index.ts reindex --full   # one-time
-bun run src/index.ts serve             # http://127.0.0.1:7878
+# 3. Seed style profiles (optional but recommended — you can edit / replace)
+mkdir -p "$VAULT_PATH/Styles/genres"
+cp examples/Styles/house-style.md "$VAULT_PATH/Styles/"
+cp examples/Styles/genres/*.md    "$VAULT_PATH/Styles/genres/"
+
+# 4. Index + serve
+bun run src/index.ts reindex --full        # one-time
+bun run src/index.ts serve                 # http://127.0.0.1:7878
 ```
 
-For the web UI:
+Open `http://127.0.0.1:7878`, paste your `HTTP_TOKEN` to log in.
+
+For frontend hot-reload during dev: `(cd web && bun run dev)` → `http://127.0.0.1:5173` (proxies API to 7878).
+
+For Cloudflare Tunnel + Access setup (remote access), see [`cloudflared/README.md`](cloudflared/README.md).
+
+### MCP registration (optional — for Claude Code integration)
+
+If you have [Claude Code](https://claude.com/claude-code) installed and want the `search_lore` / `compose_style` / `reindex` tools available inside Claude Code:
 
 ```bash
-cd web
-bun install
-bun run build       # build SPA — Hono serves from web/dist
-# or `bun run dev` for hot-reload on http://127.0.0.1:5173 (proxies API to 7878)
+claude mcp add quill -- bun run /absolute/path/to/quill/src/index.ts mcp
 ```
 
-For Cloudflare Tunnel + Access setup, see [`cloudflared/README.md`](cloudflared/README.md).
+Or edit `~/.claude/.mcp.json` directly:
+
+```json
+{
+  "mcpServers": {
+    "quill": {
+      "command": "bun",
+      "args": ["run", "/absolute/path/to/quill/src/index.ts", "mcp"],
+      "env": { "QUILL_HOME": "/absolute/path/to/quill" }
+    }
+  }
+}
+```
 
 ## Stack
 
@@ -74,6 +108,8 @@ Or **Auto-route** — keyword classifier picks the right agent ("brainstorm" →
 
 ## Commands
 
+Run as `bun run src/index.ts <cmd>`, or `bun link` once inside the repo to expose a global `quill` binary.
+
 ```
 quill stats                                Show DB row counts
 quill reindex [--full]                     Reindex vault
@@ -110,3 +146,7 @@ All API routes require `Authorization: Bearer <HTTP_TOKEN>`.
 Registered as the `quill` MCP server. Claude Code auto-spawns it.
 
 `search_lore`, `search_style`, `search_uncensored`, `list_styles`, `get_style`, `list_genres`, `get_genre`, `compose_style`, `reindex`, `stats`.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
