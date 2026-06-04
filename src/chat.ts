@@ -18,12 +18,14 @@ import {
   type Message,
 } from "./messages.ts";
 import { composeStyle } from "./style.ts";
-import { search, type SearchHit } from "./search.ts";
+import { retrieveCanon } from "./knowledge/retrieve.ts";
+import { renderCanonPack } from "./knowledge/contextpack.ts";
 import { pickAgent, streamFor, type AgentName, type AgentSelection } from "./agents/router.ts";
 import { makeRecorder } from "./usage.ts";
 
 const HISTORY_TURNS = 12;
 const LORE_HITS = 5;
+const CANON_FACTS = 8;
 const STYLE_LORE_PREVIEW_CHARS = 600;
 const ACTIVE_SCENE_LARGE_BYTES = 30 * 1024;
 const AUTO_SCENE_MTIME_WINDOW_MS = 30 * 60 * 1000;
@@ -81,6 +83,7 @@ export type ContextUsage = {
   style: { base: string | null; genres: string[] } | null;
   bibles: string[]; // file paths included
   loreHits: { path: string; heading: string | null; score: number }[];
+  canonFacts?: number;
   historyTurns: number;
   activeScene?: { path: string; bytes: number; source: "pinned" | "auto-mtime" } | null;
 };
@@ -269,6 +272,7 @@ async function buildContext(
     style: null,
     bibles: [],
     loreHits: [],
+    canonFacts: 0,
     historyTurns: history.length,
     activeScene: null,
   };
@@ -354,41 +358,35 @@ async function buildContext(
     }
   }
 
-  // 3. RAG retrieval — semantic lore search seeded by user message + recent assistant turn
+  // 3. Canon-aware retrieval — scoped to this series/book: canon facts (ranked
+  //    by canon weight) + relevant manuscript chunks, rendered as a canon-
+  //    labeled pack so the model grounds on locked canon, not drafts.
   const skipRag = activeSceneBytes > ACTIVE_SCENE_LARGE_BYTES;
   if (!skipRag) try {
     const last = history.slice(-2).map((m) => m.content).join("\n");
     const queryText = (last ? last + "\n" : "") + userMessage;
     const embedRec = makeRecorder(db, "voyage_embed", story.id);
     const rerankRec = makeRecorder(db, "voyage_rerank", story.id);
-    const hits = await search(cfg, db, queryText, {
-      mode: "lore",
-      topK: LORE_HITS,
-      candidates: 30,
+    const items = await retrieveCanon(cfg, db, queryText, {
+      scope: { series: story.series, book: story.name },
+      factK: CANON_FACTS,
+      chunkK: LORE_HITS,
       useRerank: true,
       onEmbedUsage: embedRec,
       onRerankUsage: rerankRec,
     });
-    usage.loreHits = hits.map((h: SearchHit) => ({
-      path: h.filePath,
-      heading: h.headingPath,
-      score: h.rerankScore ?? 1 - h.vectorDistance,
+    const chunks = items.filter((i) => i.kind === "chunk");
+    const facts = items.filter((i) => i.kind !== "chunk");
+    usage.loreHits = chunks.map((h) => ({
+      path: h.sourcePath ?? "",
+      heading: h.sourceRef,
+      score: h.score,
     }));
-    if (hits.length > 0) {
-      parts.push(`=== RELEVANT LORE (RAG retrieval, ranked) ===`);
-      for (const h of hits) {
-        const head = h.headingPath ? ` :: ${h.headingPath}` : "";
-        const preview =
-          h.content.length > STYLE_LORE_PREVIEW_CHARS
-            ? h.content.slice(0, STYLE_LORE_PREVIEW_CHARS) + "…"
-            : h.content;
-        parts.push(`--- ${h.filePath}${head} (L${h.startLine}-${h.endLine}) ---`);
-        parts.push(preview);
-        parts.push("");
-      }
-    }
+    usage.canonFacts = facts.length;
+    const pack = renderCanonPack(facts, chunks, { previewChars: STYLE_LORE_PREVIEW_CHARS });
+    if (pack) parts.push(pack);
   } catch {
-    /* search failure non-fatal */
+    /* retrieval failure non-fatal */
   }
 
   // 4. Recent chat history (last N turns, excluding the user message we just appended)
