@@ -19,6 +19,8 @@ import {
   diffSnapshots,
   factHistory,
 } from "./knowledge/history.ts";
+import { checkContinuityFile } from "./knowledge/continuity.ts";
+import { scopeFromPath } from "./knowledge/scope.ts";
 import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
@@ -50,6 +52,8 @@ Usage:
   quill kb snapshot list [--series S]        List snapshots
   quill kb snapshot diff <idA> <idB>         Fact-level diff between snapshots
   quill kb history <factId>                  Canon change log for a fact
+  quill kb continuity <file> [--series S]    Check a draft against series canon
+    [--no-llm]                               Heuristic only (skip LLM audit)
 `;
 
 function arg(rest: string[], flag: string): string | undefined {
@@ -332,6 +336,18 @@ async function main(): Promise<void> {
           process.exit(2);
         }
         console.log(JSON.stringify(factHistory(db, fid), null, 2));
+        return;
+      }
+      if (sub === "continuity") {
+        const file = rest[1];
+        if (!file || file.startsWith("--")) {
+          console.error("kb continuity <file> [--series S] [--no-llm]");
+          process.exit(2);
+        }
+        const series = arg(rest, "--series") ?? scopeFromPath(file).series;
+        const useLlm = !hasFlag(rest, "--no-llm");
+        const issues = await checkContinuityFile(cfg, db, { series, file, useLlm });
+        console.log(JSON.stringify(issues, null, 2));
         return;
       }
       console.error(

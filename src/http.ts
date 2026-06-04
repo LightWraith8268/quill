@@ -26,6 +26,7 @@ import { runChat, runChatRegenerate } from "./chat.ts";
 import { extractStory } from "./knowledge/extract.ts";
 import { entityCount, factCount } from "./knowledge/store.ts";
 import { retrieveCanon } from "./knowledge/retrieve.ts";
+import { checkContinuityFile } from "./knowledge/continuity.ts";
 import type { AgentSelection } from "./agents/router.ts";
 import { listWorkflows, getWorkflow } from "./workflows.ts";
 import { vaultTree, readVaultFile, scanEntities, resolveWikiTarget, writeVaultFile } from "./vault.ts";
@@ -1229,6 +1230,21 @@ export function buildApp(cfg: Config) {
       chunkK: Number(c.req.query("chunks") ?? 6),
     });
     return c.json({ items });
+  });
+
+  // Continuity audit of a draft file against the story's series canon.
+  app.get("/api/stories/:id/kb/continuity", async (c) => {
+    const story = getStory(db, Number(c.req.param("id")));
+    if (!story) return c.json({ error: "story not found" }, 404);
+    const file = c.req.query("file");
+    if (!file) return c.json({ error: "file required" }, 400);
+    const useLlm = c.req.query("llm") !== "false";
+    try {
+      const issues = await checkContinuityFile(cfg, db, { series: story.series, file, useLlm });
+      return c.json({ issues });
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
+    }
   });
 
   app.post("/api/stories/:id/regenerate", async (c) => {
