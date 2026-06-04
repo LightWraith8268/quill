@@ -241,6 +241,10 @@ export const api = {
     ),
   storyBeats: (storyId: number) =>
     req<{ chapters: ChapterBeats[] }>(`/stories/${storyId}/beats`),
+  kbContinuity: (storyId: number, file: string, useLlm = true) =>
+    req<{ issues: ContinuityIssue[] }>(
+      `/stories/${storyId}/kb/continuity?file=${encodeURIComponent(file)}&llm=${useLlm}`
+    ),
   pronunciationGet: () => req<Record<string, string>>("/pronunciation"),
   pronunciationSet: (map: Record<string, string>) =>
     req<{ ok: boolean }>("/pronunciation", { method: "PUT", body: map }),
@@ -523,6 +527,15 @@ export type ChapterBeats = {
   avgSentenceLen: number;
   sentenceVariance: number;
   intensity: number;
+};
+
+export type ContinuityIssue = {
+  severity: "high" | "medium" | "low";
+  entity: string | null;
+  claim: string;
+  canon: string;
+  suggestion: string;
+  source: "llm" | "heuristic";
 };
 
 export type DailyWordRow = {

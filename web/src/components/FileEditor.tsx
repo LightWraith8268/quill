@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
   inlineContinueStream,
+  type ContinuityIssue,
   type DraftMeta,
   type VaultFile,
 } from "../api.ts";
@@ -83,6 +84,8 @@ export function FileEditor({
   } | null>(null);
   const [continuing, setContinuing] = useState(false);
   const [voiceScore, setVoiceScore] = useState<{ score: number; band: string } | null>(null);
+  const [continuity, setContinuity] = useState<ContinuityIssue[] | null>(null);
+  const [checkingContinuity, setCheckingContinuity] = useState(false);
   const isDark = useIsDarkTheme();
 
   // Record viewed paths for the recent-files store.
@@ -98,6 +101,7 @@ export function FileEditor({
       setSelectedDrafts(new Set());
       setEditing(false);
       setDirtyContent("");
+      setContinuity(null);
       return;
     }
     api.vaultFile(path).then(setFile).catch((e: Error) => setErr(e.message));
@@ -109,6 +113,7 @@ export function FileEditor({
     setSelectedDrafts(new Set());
     setEditing(false);
     setDirtyContent("");
+    setContinuity(null);
   }, [path]);
 
   const isDirty = editing && file !== null && dirtyContent !== file.content;
@@ -264,6 +269,20 @@ export function FileEditor({
     }
   };
 
+  const runContinuity = async () => {
+    if (!path || activeStoryId === null) return;
+    setCheckingContinuity(true);
+    setErr(null);
+    try {
+      const r = await api.kbContinuity(activeStoryId, path);
+      setContinuity(r.issues);
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setCheckingContinuity(false);
+    }
+  };
+
   return (
     <div className="h-full min-h-0 flex flex-col">
       <section className="card flex-1 overflow-auto space-y-3">
@@ -308,6 +327,19 @@ export function FileEditor({
                 ■
               </button>
               <span className="ml-auto flex gap-2">
+                <button
+                  type="button"
+                  className="btn btn-ghost text-xs"
+                  onClick={runContinuity}
+                  disabled={checkingContinuity || activeStoryId === null}
+                  title={
+                    activeStoryId === null
+                      ? "Pick a story for canon scope"
+                      : "Check this file against the series canon"
+                  }
+                >
+                  {checkingContinuity ? "Checking…" : "⚖ Continuity"}
+                </button>
                 {!editing && (
                   <button
                     type="button"
@@ -420,6 +452,72 @@ export function FileEditor({
               </>
             ) : (
               <FileContent content={file.content} onWikiClick={followWiki} />
+            )}
+
+            {continuity && (
+              <div className="border-t border-muted/20 pt-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-display text-lg">Continuity</h3>
+                  {continuity.length === 0 ? (
+                    <span className="text-xs text-tealBright">
+                      ✓ no contradictions vs canon
+                    </span>
+                  ) : (
+                    <span className="text-xs text-amber-500">
+                      {continuity.length} issue{continuity.length === 1 ? "" : "s"}
+                    </span>
+                  )}
+                  <button
+                    className="btn btn-ghost text-xs ml-auto"
+                    onClick={() => setContinuity(null)}
+                  >
+                    close
+                  </button>
+                </div>
+                {isDirty && (
+                  <p className="text-[11px] text-muted">
+                    Checked the saved version — save to include unsaved edits.
+                  </p>
+                )}
+                <ul className="space-y-2">
+                  {continuity.map((iss, i) => {
+                    const border =
+                      iss.severity === "high"
+                        ? "border-red-500/50"
+                        : iss.severity === "medium"
+                          ? "border-amber-500/50"
+                          : "border-muted/30";
+                    const tone =
+                      iss.severity === "high"
+                        ? "text-red-500"
+                        : iss.severity === "medium"
+                          ? "text-amber-500"
+                          : "text-muted";
+                    return (
+                      <li key={i} className={`text-xs p-2 rounded border ${border}`}>
+                        <div className="flex items-center gap-2">
+                          <span className={`uppercase font-medium ${tone}`}>
+                            {iss.severity}
+                          </span>
+                          {iss.entity && (
+                            <span className="text-tealBright">{iss.entity}</span>
+                          )}
+                          <span className="ml-auto text-muted">{iss.source}</span>
+                        </div>
+                        <div className="mt-1 text-bg dark:text-paper">
+                          <span className="text-muted">draft:</span> {iss.claim}
+                        </div>
+                        <div className="text-bg dark:text-paper">
+                          <span className="text-muted">canon:</span> {iss.canon}
+                        </div>
+                        {iss.suggestion && (
+                          <div className="text-tealBright mt-1">→ {iss.suggestion}</div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
             )}
 
             <div className="border-t border-muted/20 pt-3 space-y-2">
