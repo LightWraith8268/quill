@@ -54,7 +54,9 @@ type Comparison =
       right: { label: string; content: string };
     };
 
-export function VaultBrowser() {
+export function VaultBrowser({
+  onOpenWorkspace,
+}: { onOpenWorkspace?: (path: string) => void } = {}) {
   const [tree, setTree] = useState<TreeNode | null>(null);
   const [openDirs, setOpenDirs] = useState<Set<string>>(() => new Set([""]));
   const [activePath, setActivePath] = useState<string | null>(null);
@@ -285,7 +287,12 @@ export function VaultBrowser() {
     <div className="grid grid-cols-[300px,1fr] gap-4 h-full max-w-[1500px] mx-auto">
       <aside className="card overflow-auto">
         <RecentFiles onPick={setActivePath} />
-        <h3 className="font-display text-lg mb-2">Vault</h3>
+        <h3 className="font-display text-lg mb-1">Vault</h3>
+        {onOpenWorkspace && (
+          <p className="text-[11px] text-muted mb-2">
+            Hover a folder → <span className="text-tealBright">open ▸</span> to chat in it
+          </p>
+        )}
         {!tree && <p className="text-muted text-sm">Loading…</p>}
         {tree && (
           <div className="text-sm">
@@ -295,6 +302,7 @@ export function VaultBrowser() {
               openDirs={openDirs}
               onToggle={toggleDir}
               onPick={setActivePath}
+              onOpenWorkspace={onOpenWorkspace}
               isRoot
             />
           </div>
@@ -597,6 +605,7 @@ function TreeView(props: {
   openDirs: Set<string>;
   onToggle: (p: string) => void;
   onPick: (p: string) => void;
+  onOpenWorkspace?: (p: string) => void;
   isRoot?: boolean;
 }) {
   const { node } = props;
@@ -617,12 +626,23 @@ function TreeView(props: {
   return (
     <div>
       {!props.isRoot && (
-        <button
-          onClick={() => props.onToggle(node.path)}
-          className="w-full text-left px-1.5 py-0.5 rounded hover:bg-bg/10 dark:hover:bg-muted/10 text-bg dark:text-paper truncate"
-        >
-          {open ? "📂" : "📁"} {node.name}
-        </button>
+        <div className="flex items-center group">
+          <button
+            onClick={() => props.onToggle(node.path)}
+            className="flex-1 min-w-0 text-left px-1.5 py-0.5 rounded hover:bg-bg/10 dark:hover:bg-muted/10 text-bg dark:text-paper truncate"
+          >
+            {open ? "📂" : "📁"} {node.name}
+          </button>
+          {props.onOpenWorkspace && (
+            <button
+              onClick={() => props.onOpenWorkspace!(node.path)}
+              title={`Open "${node.name}" as a chat workspace`}
+              className="opacity-0 group-hover:opacity-100 focus:opacity-100 btn btn-ghost text-xs px-1.5 py-0.5 shrink-0"
+            >
+              open ▸
+            </button>
+          )}
+        </div>
       )}
       {(open || props.isRoot) && node.children && (
         <ul className={`${props.isRoot ? "" : "ml-3 border-l border-muted/20 pl-2"} space-y-0.5`}>

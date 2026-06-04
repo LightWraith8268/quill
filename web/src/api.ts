@@ -117,6 +117,11 @@ export const api = {
   storiesList: () => req<{ stories: Story[] }>("/stories"),
   storyCreate: (s: DiscoveredStory) =>
     req<Story>("/stories", { method: "POST", body: s }),
+  openWorkspace: (path: string) =>
+    req<{ story: Story; scope: { series: string | null; book: string | null } }>(
+      "/workspace/open",
+      { method: "POST", body: { path } }
+    ),
   storyGet: (id: number) => req<Story>(`/stories/${id}`),
   storyPatch: (
     id: number,

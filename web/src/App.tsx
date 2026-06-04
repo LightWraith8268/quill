@@ -121,6 +121,18 @@ export default function App() {
     setTab("chat");
   };
 
+  // Open any folder from the vault tree as a chat workspace (auto-registers it
+  // as a story; chat then runs cwd'd there with that folder's layered CLAUDE.md).
+  const onOpenWorkspace = (path: string) => {
+    api
+      .openWorkspace(path)
+      .then((r) => {
+        setActiveStoryId(r.story.id);
+        setTab("chat");
+      })
+      .catch((e: Error) => setBootError(e.message));
+  };
+
   if (shareToken) return <ShareView token={shareToken} />;
 
   if (!authed) {
@@ -170,7 +182,7 @@ export default function App() {
             </div>
           ))}
         {tab === "search" && <SearchPanel activeStoryId={activeStoryId} />}
-        {tab === "vault" && <VaultBrowser />}
+        {tab === "vault" && <VaultBrowser onOpenWorkspace={onOpenWorkspace} />}
         {tab === "lore" && <LoreBrowser />}
         {tab === "characters" && (
           <CharacterTimeline defaultSeries={null} />
