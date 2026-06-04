@@ -38,6 +38,7 @@ type StreamEvent = {
   model?: string;
   delta?: { text?: string; type?: string };
   content_block?: { type: string; text?: string };
+  event?: { type?: string; delta?: { type?: string; text?: string } };
 };
 
 import { resolveBin as resolvePathBin } from "./resolve.ts";
@@ -50,7 +51,7 @@ export async function* claudeStream(
   prompt: string,
   opts: ClaudeOpts = {}
 ): AsyncGenerator<string, void, void> {
-  const args = ["-p", "--output-format", "stream-json", "--verbose"];
+  const args = ["-p", "--output-format", "stream-json", "--include-partial-messages", "--verbose"];
   const composed = opts.systemPrompt
     ? `${opts.systemPrompt}\n\n=== USER MESSAGE ===\n${prompt}`
     : prompt;
@@ -74,11 +75,34 @@ export async function* claudeStream(
   const reader = child.stdout.getReader();
   const dec = new TextDecoder();
   let finalUsage: AgentUsage | null = null;
+  let streamed = false;
 
   const handleLine = (line: string): string | null => {
-    const u = extractUsage(line);
+    let json: StreamEvent;
+    try {
+      json = JSON.parse(line) as StreamEvent;
+    } catch {
+      return null;
+    }
+
+    const u = usageFrom(json);
     if (u) finalUsage = u;
-    return extractText(line);
+
+    // Token-by-token partial delta (needs --include-partial-messages).
+    if (
+      json.type === "stream_event" &&
+      json.event?.type === "content_block_delta" &&
+      json.event.delta?.type === "text_delta" &&
+      json.event.delta.text
+    ) {
+      streamed = true;
+      return json.event.delta.text;
+    }
+
+    // Completed assistant block — only emit if no deltas streamed, so a CLI
+    // build without partial-message support still works (de-dupe otherwise).
+    if (!streamed) return textFrom(json);
+    return null;
   };
 
   while (true) {
@@ -110,13 +134,7 @@ export async function* claudeStream(
   }
 }
 
-function extractText(line: string): string | null {
-  let json: StreamEvent;
-  try {
-    json = JSON.parse(line) as StreamEvent;
-  } catch {
-    return null;
-  }
+function textFrom(json: StreamEvent): string | null {
   if (json.message?.content && Array.isArray(json.message.content)) {
     const parts = json.message.content
       .filter((b) => b.type === "text" && typeof b.text === "string")
@@ -130,13 +148,7 @@ function extractText(line: string): string | null {
   return null;
 }
 
-function extractUsage(line: string): AgentUsage | null {
-  let json: StreamEvent;
-  try {
-    json = JSON.parse(line) as StreamEvent;
-  } catch {
-    return null;
-  }
+function usageFrom(json: StreamEvent): AgentUsage | null {
   // Claude Code emits a final `result` event with totals, plus per-message
   // events with cumulative usage. Prefer whichever we last see.
   const u = json.usage ?? json.message?.usage;
