@@ -22,6 +22,7 @@ import {
 import { checkContinuityFile } from "./knowledge/continuity.ts";
 import { scopeFromPath } from "./knowledge/scope.ts";
 import { alignBeats, pacingReport } from "./knowledge/structure.ts";
+import { openWorkspace } from "./workspace.ts";
 import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
@@ -57,6 +58,7 @@ Usage:
     [--no-llm]                               Heuristic only (skip LLM audit)
   quill kb beats <storyId> [--template T]    Beat-sheet alignment (save-the-cat|hero-journey|three-act)
   quill kb pacing <storyId>                  Per-chapter pacing + outliers (>1.5σ)
+  quill workspace open <relPath>             Open any folder as a chat workspace
 `;
 
 function arg(rest: string[], flag: string): string | undefined {
@@ -242,6 +244,23 @@ async function main(): Promise<void> {
           2
         )
       );
+      return;
+    }
+    case "workspace": {
+      const sub = rest[0];
+      const db = openDb(cfg);
+      if (sub === "open") {
+        const path = rest[1];
+        if (!path) {
+          console.error("workspace open <relPath>");
+          process.exit(2);
+        }
+        const ws = openWorkspace(cfg, db, path);
+        console.log(JSON.stringify({ story: ws.story, scope: ws.scope }, null, 2));
+        return;
+      }
+      console.error("workspace: subcommand required (open <relPath>)");
+      process.exit(2);
       return;
     }
     case "kb": {

@@ -20,6 +20,7 @@ import {
 import { composeStyle } from "./style.ts";
 import { retrieveCanon } from "./knowledge/retrieve.ts";
 import { renderCanonPack } from "./knowledge/contextpack.ts";
+import { storyCwd } from "./workspace.ts";
 import { pickAgent, streamFor, type AgentName, type AgentSelection } from "./agents/router.ts";
 import { makeRecorder } from "./usage.ts";
 
@@ -122,7 +123,7 @@ export async function* runChat(
   try {
     for await (const chunk of streamFor(route.agent, userPrompt, {
       systemPrompt,
-      cwd: cfg.VAULT_PATH,
+      cwd: storyCwd(cfg, story),
       onUsage: (u) => agentRecorder({
         inputTokens: u.inputTokens,
         outputTokens: u.outputTokens,
@@ -228,7 +229,7 @@ export async function* runChatRegenerate(
   try {
     for await (const chunk of streamFor(route.agent, userPrompt, {
       systemPrompt: built.systemPrompt,
-      cwd: cfg.VAULT_PATH,
+      cwd: storyCwd(cfg, story),
       onUsage: (u) =>
         agentRecorder({
           inputTokens: u.inputTokens,

@@ -102,13 +102,13 @@ export function getStoryByPath(db: DB, path: string): Story | null {
 
 export function upsertStory(
   db: DB,
-  s: { path: string; name: string; series: string }
+  s: { path: string; name: string; series: string | null }
 ): Story {
   const now = Date.now();
   const existing = getStoryByPath(db, s.path);
   if (existing) return existing;
   const inserted = db
-    .query<StoryRow, [string, string, string, number, number]>(
+    .query<StoryRow, [string, string, string | null, number, number]>(
       `INSERT INTO stories (path, name, series, active_genres, created_at, updated_at)
        VALUES (?, ?, ?, '[]', ?, ?)
        RETURNING *`

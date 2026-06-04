@@ -17,6 +17,12 @@ const Schema = z.object({
   EMBED_RETRY_MAX: z.coerce.number().default(6),
   HTTP_PORT: z.coerce.number().default(7878),
   HTTP_TOKEN: z.string().default(""),
+  // Top of the writing tree you can open folders from (defaults to VAULT_PATH).
+  WRITING_ROOT: z.string().default(""),
+  // Point the Claude agent at a custom profile dir (its own CLAUDE.md, settings,
+  // creds) instead of ~/.claude — e.g. a writing-tuned profile. Inherited by the
+  // spawned Claude CLI via the process env.
+  CLAUDE_CONFIG_DIR: z.string().default(""),
   HYBRID_BM25: z
     .string()
     .default("true")

@@ -28,6 +28,7 @@ import { entityCount, factCount } from "./knowledge/store.ts";
 import { retrieveCanon } from "./knowledge/retrieve.ts";
 import { checkContinuityFile } from "./knowledge/continuity.ts";
 import { alignBeats, pacingReport } from "./knowledge/structure.ts";
+import { openWorkspace } from "./workspace.ts";
 import type { AgentSelection } from "./agents/router.ts";
 import { listWorkflows, getWorkflow } from "./workflows.ts";
 import { vaultTree, readVaultFile, scanEntities, resolveWikiTarget, writeVaultFile } from "./vault.ts";
@@ -1266,6 +1267,21 @@ export function buildApp(cfg: Config) {
       return c.json(await pacingReport(cfg, db, id));
     } catch (e) {
       return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
+    }
+  });
+
+  // Open any folder under the writing root as a chat workspace: auto-registers
+  // it as a story, derives series/book scope, and the ensuing chat runs cwd'd in
+  // that folder so its layered CLAUDE.md applies.
+  app.post("/api/workspace/open", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { path?: unknown };
+    const path = typeof body.path === "string" ? body.path : "";
+    if (!path) return c.json({ error: "path required" }, 400);
+    try {
+      const ws = openWorkspace(cfg, db, path);
+      return c.json({ story: ws.story, scope: ws.scope });
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
     }
   });
 
