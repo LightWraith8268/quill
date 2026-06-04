@@ -25,6 +25,7 @@ import { listMessages, clearMessages } from "./messages.ts";
 import { runChat, runChatRegenerate } from "./chat.ts";
 import { extractStory } from "./knowledge/extract.ts";
 import { entityCount, factCount } from "./knowledge/store.ts";
+import { retrieveCanon } from "./knowledge/retrieve.ts";
 import type { AgentSelection } from "./agents/router.ts";
 import { listWorkflows, getWorkflow } from "./workflows.ts";
 import { vaultTree, readVaultFile, scanEntities, resolveWikiTarget, writeVaultFile } from "./vault.ts";
@@ -1214,6 +1215,20 @@ export function buildApp(cfg: Config) {
     const story = getStory(db, Number(c.req.param("id")));
     const series = story?.series ?? undefined;
     return c.json({ entities: entityCount(db, series), facts: factCount(db, series) });
+  });
+
+  // Canon-aware retrieval scoped to a story's series/book.
+  app.get("/api/stories/:id/kb/search", async (c) => {
+    const story = getStory(db, Number(c.req.param("id")));
+    if (!story) return c.json({ error: "story not found" }, 404);
+    const q = c.req.query("q") ?? "";
+    if (!q.trim()) return c.json({ error: "q required" }, 400);
+    const items = await retrieveCanon(cfg, db, q, {
+      scope: { series: story.series, book: story.name },
+      factK: Number(c.req.query("facts") ?? 8),
+      chunkK: Number(c.req.query("chunks") ?? 6),
+    });
+    return c.json({ items });
   });
 
   app.post("/api/stories/:id/regenerate", async (c) => {

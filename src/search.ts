@@ -23,11 +23,14 @@ export type SearchHit = {
   rrfScore?: number;
 };
 
+export type SearchScope = { series?: string | null; book?: string | null };
+
 export type SearchOptions = {
   mode: SearchMode;
   topK: number;
   candidates: number; // pool size before rerank
   useRerank: boolean;
+  scope?: SearchScope; // restrict to a series (+ optionally a book)
   onEmbedUsage?: EmbedUsageRecorder;
   onRerankUsage?: RerankUsageRecorder;
 };
@@ -62,6 +65,23 @@ function tagFilter(mode: SearchMode, alias: string): string {
   return ` AND ',' || ${alias}.tags || ',' LIKE '%,${mode},%'`;
 }
 
+// Restrict to a series (+ optional book). Series-scoped chunks plus unscoped
+// (NULL) global content are included; a book narrows to that book + series-
+// shared (book IS NULL), so sibling books in the series don't bleed in.
+function scopeFilter(
+  scope: SearchScope | undefined,
+  alias: string
+): { sql: string; params: string[] } {
+  if (!scope?.series) return { sql: "", params: [] };
+  const params: string[] = [scope.series];
+  let sql = ` AND (${alias}.series = ? OR ${alias}.series IS NULL)`;
+  if (scope.book) {
+    sql += ` AND (${alias}.book = ? OR ${alias}.book IS NULL)`;
+    params.push(scope.book);
+  }
+  return { sql, params };
+}
+
 // Sanitize a free-text user query for FTS5 MATCH. Strips punctuation,
 // drops short tokens and reserved words, double-quotes each remaining
 // token (escaping embedded quotes), then joins with space (implicit AND).
@@ -85,6 +105,7 @@ export async function search(
   const qbuf = toFloat32Buffer(qvec);
 
   const k = Math.max(opts.candidates, opts.topK);
+  const scope = scopeFilter(opts.scope, "c");
 
   // ---- Vector candidates ----
   const vecSql = `
@@ -106,13 +127,13 @@ export async function search(
     FROM matches m
     JOIN chunks c ON c.id = m.chunk_id
     JOIN files f ON f.id = c.file_id
-    WHERE 1=1${tagFilter(opts.mode, "c")}
+    WHERE 1=1${tagFilter(opts.mode, "c")}${scope.sql}
     ORDER BY m.distance
     LIMIT ?
   `;
   const vecRows = db
-    .query<VectorRow, [Buffer, number, number]>(vecSql)
-    .all(qbuf, k, k);
+    .query<VectorRow, (Buffer | number | string)[]>(vecSql)
+    .all(qbuf, k, ...scope.params, k);
 
   // ---- BM25 candidates (optional) ----
   let bm25Rows: Bm25Row[] = [];
@@ -131,12 +152,14 @@ export async function search(
       FROM chunks_fts
       JOIN chunks c ON c.id = chunks_fts.rowid
       JOIN files f ON f.id = c.file_id
-      WHERE chunks_fts MATCH ?${tagFilter(opts.mode, "c")}
+      WHERE chunks_fts MATCH ?${tagFilter(opts.mode, "c")}${scope.sql}
       ORDER BY bm25(chunks_fts) ASC
       LIMIT ?
     `;
     try {
-      bm25Rows = db.query<Bm25Row, [string, number]>(bm25Sql).all(ftsQuery, k);
+      bm25Rows = db
+        .query<Bm25Row, (string | number)[]>(bm25Sql)
+        .all(ftsQuery, ...scope.params, k);
     } catch {
       // FTS5 parse error or table missing — degrade silently to vector-only.
       bm25Rows = [];

@@ -12,6 +12,7 @@ import { usageRollup } from "./usage.ts";
 import { buildStoryExport } from "./export.ts";
 import { extractStory } from "./knowledge/extract.ts";
 import { entityCount, factCount } from "./knowledge/store.ts";
+import { retrieveCanon } from "./knowledge/retrieve.ts";
 import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
@@ -37,6 +38,8 @@ Usage:
   quill export <storyId> [--out path]        Export full story bundle as JSON
   quill kb extract <storyId>                 Extract canon graph (entities/facts/relationships)
   quill kb stats [--series S]                Knowledge-layer counts
+  quill kb search <query> [--series S]       Canon-aware retrieval (facts + scoped chunks)
+    [--book B] [--facts N] [--chunks N] [--json]
 `;
 
 function arg(rest: string[], flag: string): string | undefined {
@@ -249,7 +252,41 @@ async function main(): Promise<void> {
         );
         return;
       }
-      console.error("kb: subcommand required (extract <storyId> | stats [--series S])");
+      if (sub === "search") {
+        const flags = new Set(["--series", "--book", "--facts", "--chunks", "--json"]);
+        const qparts: string[] = [];
+        for (let i = 1; i < rest.length; i++) {
+          const v = rest[i]!;
+          if (flags.has(v)) {
+            if (v !== "--json") i++;
+            continue;
+          }
+          qparts.push(v);
+        }
+        const query = qparts.join(" ").trim();
+        if (!query) {
+          console.error("kb search: query required");
+          process.exit(2);
+        }
+        const items = await retrieveCanon(cfg, db, query, {
+          scope: { series: arg(rest, "--series") ?? null, book: arg(rest, "--book") ?? null },
+          factK: Number(arg(rest, "--facts") ?? 8),
+          chunkK: Number(arg(rest, "--chunks") ?? 6),
+        });
+        if (hasFlag(rest, "--json")) {
+          console.log(JSON.stringify(items, null, 2));
+          return;
+        }
+        for (const it of items) {
+          const tag = it.kind === "chunk" ? "chunk" : `${it.kind}:${it.canonWeight}`;
+          const who = it.entity ? `${it.entity} — ` : "";
+          console.log(`[${tag}] ${who}${it.text.slice(0, 120)}`);
+        }
+        return;
+      }
+      console.error(
+        "kb: subcommand required (extract <storyId> | stats [--series S] | search <query>)"
+      );
       process.exit(2);
       return;
     }
