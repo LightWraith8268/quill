@@ -6,6 +6,12 @@
   html, body, #root {
     height: 100%;
   }
+  /* Use the dynamic viewport on mobile so the bottom tab bar isn't hidden
+     behind the URL/toolbar. Falls back to 100% where dvh is unsupported. */
+  #root {
+    height: 100vh;
+    height: 100dvh;
+  }
   body {
     @apply bg-paper text-bg font-ui antialiased;
   }
@@ -61,5 +67,9 @@
   }
   .card {
     @apply bg-paper/80 border border-bg/10 rounded-lg p-4 dark:bg-bg/60 dark:border-muted/20;
+  }
+  /* Pad below the home indicator / gesture bar on notched devices. */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
   }
 }

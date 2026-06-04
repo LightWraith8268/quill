@@ -209,7 +209,7 @@ export function ChatPanel({ storyId }: Props) {
     <div className="max-w-5xl mx-auto h-full grid grid-rows-[auto,1fr,auto] gap-2 sm:gap-3">
       {story && <StoryConfig story={story} onUpdated={setStory} />}
 
-      <div ref={scrollRef} className="card overflow-auto space-y-4">
+      <div ref={scrollRef} className="card overflow-auto space-y-4 pt-8">
         {err && (
           <div className="bg-red-100 text-red-900 dark:bg-red-900/40 dark:text-red-200 text-sm p-3 rounded">{err}</div>
         )}

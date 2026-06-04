@@ -2,28 +2,8 @@ import { useEffect, useState } from "react";
 import { api, auth, type Story } from "./api.ts";
 import { Login } from "./components/Login.tsx";
 import { TopBar } from "./components/TopBar.tsx";
-import { SearchPanel } from "./components/SearchPanel.tsx";
-import { StyleBrowser } from "./components/StyleBrowser.tsx";
-import { StatsPanel } from "./components/StatsPanel.tsx";
-import { ChatPanel } from "./components/ChatPanel.tsx";
 import { StoryPicker } from "./components/StoryPicker.tsx";
-import { WorkflowRunner } from "./components/WorkflowRunner.tsx";
-import { VaultBrowser } from "./components/VaultBrowser.tsx";
-import { LoreBrowser } from "./components/LoreBrowser.tsx";
-import { CharacterTimeline } from "./components/CharacterTimeline.tsx";
-import { OutlineView } from "./components/OutlineView.tsx";
-import { VAULT_NAV_EVENT, VAULT_PENDING_KEY } from "./citations.ts";
-
-type Tab =
-  | "chat"
-  | "outline"
-  | "workflows"
-  | "search"
-  | "vault"
-  | "lore"
-  | "characters"
-  | "styles"
-  | "stats";
+import { IdeShell } from "./components/IdeShell.tsx";
 
 const ACTIVE_STORY_KEY = "quill.activeStoryId";
 
@@ -71,7 +51,6 @@ function ShareView({ token }: { token: string }) {
 export default function App() {
   const shareToken = getShareToken();
   const [authed, setAuthed] = useState<boolean>(Boolean(auth.get()));
-  const [tab, setTab] = useState<Tab>("chat");
   const [bootError, setBootError] = useState<string | null>(null);
   const [activeStoryId, setActiveStoryId] = useState<number | null>(loadActiveStoryId);
 
@@ -97,42 +76,6 @@ export default function App() {
     }
   }, [activeStoryId]);
 
-  // Cross-tab nav: chat citations dispatch quill:navigate-vault. Switch tabs;
-  // the requested path is stashed in localStorage by the helper for VaultBrowser
-  // to pick up. (VaultBrowser wiring lands in a follow-up phase.)
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent<{ path?: string }>).detail;
-      if (detail?.path) {
-        try {
-          localStorage.setItem(VAULT_PENDING_KEY, detail.path);
-        } catch {
-          // ignore storage failures
-        }
-      }
-      setTab("vault");
-    };
-    window.addEventListener(VAULT_NAV_EVENT, handler);
-    return () => window.removeEventListener(VAULT_NAV_EVENT, handler);
-  }, []);
-
-  const onPickStory = (s: Story) => {
-    setActiveStoryId(s.id);
-    setTab("chat");
-  };
-
-  // Open any folder from the vault tree as a chat workspace (auto-registers it
-  // as a story; chat then runs cwd'd there with that folder's layered CLAUDE.md).
-  const onOpenWorkspace = (path: string) => {
-    api
-      .openWorkspace(path)
-      .then((r) => {
-        setActiveStoryId(r.story.id);
-        setTab("chat");
-      })
-      .catch((e: Error) => setBootError(e.message));
-  };
-
   if (shareToken) return <ShareView token={shareToken} />;
 
   if (!authed) {
@@ -142,14 +85,15 @@ export default function App() {
   return (
     <div className="h-full flex flex-col">
       <TopBar
-        tab={tab}
-        setTab={setTab}
         onLogout={() => {
           auth.set("");
           setAuthed(false);
         }}
         storyPicker={
-          <StoryPicker activeStoryId={activeStoryId} onPick={onPickStory} />
+          <StoryPicker
+            activeStoryId={activeStoryId}
+            onPick={(s: Story) => setActiveStoryId(s.id)}
+          />
         }
       />
       {bootError && (
@@ -157,39 +101,13 @@ export default function App() {
           API unreachable: {bootError}
         </div>
       )}
-      <main className="flex-1 overflow-auto p-3 sm:p-6">
-        {tab === "chat" && <ChatPanel storyId={activeStoryId} />}
-        {tab === "outline" &&
-          (activeStoryId ? (
-            <OutlineView storyId={activeStoryId} />
-          ) : (
-            <div className="max-w-3xl mx-auto card text-center text-muted py-12">
-              Pick a story to outline.
-            </div>
-          ))}
-        {tab === "workflows" &&
-          (activeStoryId ? (
-            <div className="max-w-5xl mx-auto">
-              <WorkflowRunner
-                storyId={activeStoryId}
-                onComplete={() => setTab("chat")}
-                onCancel={() => setTab("chat")}
-              />
-            </div>
-          ) : (
-            <div className="max-w-3xl mx-auto card text-center text-muted py-12">
-              Pick a story from the top bar to run workflows.
-            </div>
-          ))}
-        {tab === "search" && <SearchPanel activeStoryId={activeStoryId} />}
-        {tab === "vault" && <VaultBrowser onOpenWorkspace={onOpenWorkspace} />}
-        {tab === "lore" && <LoreBrowser />}
-        {tab === "characters" && (
-          <CharacterTimeline defaultSeries={null} />
-        )}
-        {tab === "styles" && <StyleBrowser />}
-        {tab === "stats" && <StatsPanel activeStoryId={activeStoryId} />}
-      </main>
+      <div className="flex-1 min-h-0">
+        <IdeShell
+          activeStoryId={activeStoryId}
+          setActiveStoryId={setActiveStoryId}
+          onError={setBootError}
+        />
+      </div>
     </div>
   );
 }

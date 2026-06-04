@@ -57,10 +57,12 @@ export function FileEditor({
   path,
   activeStoryId,
   onOpenPath,
+  onDirtyChange,
 }: {
   path: string | null;
   activeStoryId: number | null;
   onOpenPath: (path: string) => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const [file, setFile] = useState<VaultFile | null>(null);
   const [drafts, setDrafts] = useState<DraftMeta[]>([]);
@@ -111,6 +113,13 @@ export function FileEditor({
 
   const isDirty = editing && file !== null && dirtyContent !== file.content;
   const canEdit = isEditablePath(path);
+
+  // Surface the unsaved-edit flag so the shell can guard navigation away.
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+    // onDirtyChange is a stable ref setter from the parent; intentionally omitted.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDirty]);
 
   const beginEdit = () => {
     if (!file || !canEdit) return;
@@ -294,6 +303,7 @@ export function FileEditor({
                 onClick={() => stopReading()}
                 className="btn btn-ghost text-xs"
                 title="Stop reading"
+                aria-label="Stop reading"
               >
                 ■
               </button>
@@ -559,7 +569,7 @@ export function FileEditor({
         />
       )}
       {voiceScore && (
-        <div className="fixed bottom-4 right-4 z-40 px-3 py-2 rounded-full text-xs font-mono bg-bg/90 dark:bg-paper/90 text-paper dark:text-bg border border-tealBright/40 shadow-lg">
+        <div className="fixed bottom-20 right-4 lg:bottom-4 z-40 px-3 py-2 rounded-full text-xs font-mono bg-bg/90 dark:bg-paper/90 text-paper dark:text-bg border border-tealBright/40 shadow-lg">
           voice: {voiceScore.score.toFixed(2)} ({voiceScore.band})
           <button
             onClick={() => setVoiceScore(null)}
