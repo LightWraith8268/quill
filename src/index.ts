@@ -13,6 +13,12 @@ import { buildStoryExport } from "./export.ts";
 import { extractStory } from "./knowledge/extract.ts";
 import { entityCount, factCount } from "./knowledge/store.ts";
 import { retrieveCanon } from "./knowledge/retrieve.ts";
+import {
+  createSnapshot,
+  listSnapshots,
+  diffSnapshots,
+  factHistory,
+} from "./knowledge/history.ts";
 import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
@@ -40,6 +46,10 @@ Usage:
   quill kb stats [--series S]                Knowledge-layer counts
   quill kb search <query> [--series S]       Canon-aware retrieval (facts + scoped chunks)
     [--book B] [--facts N] [--chunks N] [--json]
+  quill kb snapshot create <series> <name>   Freeze series canon state
+  quill kb snapshot list [--series S]        List snapshots
+  quill kb snapshot diff <idA> <idB>         Fact-level diff between snapshots
+  quill kb history <factId>                  Canon change log for a fact
 `;
 
 function arg(rest: string[], flag: string): string | undefined {
@@ -284,8 +294,48 @@ async function main(): Promise<void> {
         }
         return;
       }
+      if (sub === "snapshot") {
+        const op = rest[1];
+        if (op === "create") {
+          const series = rest[2];
+          const name = rest[3];
+          if (!series || !name) {
+            console.error("kb snapshot create <series> <name> [--note ...]");
+            process.exit(2);
+          }
+          const id = createSnapshot(db, series, name, arg(rest, "--note"));
+          console.log(JSON.stringify({ id, series, name }, null, 2));
+          return;
+        }
+        if (op === "list") {
+          console.log(JSON.stringify(listSnapshots(db, arg(rest, "--series")), null, 2));
+          return;
+        }
+        if (op === "diff") {
+          const a = Number(rest[2]);
+          const b = Number(rest[3]);
+          if (!Number.isFinite(a) || !Number.isFinite(b)) {
+            console.error("kb snapshot diff <idA> <idB>");
+            process.exit(2);
+          }
+          console.log(JSON.stringify(diffSnapshots(db, a, b), null, 2));
+          return;
+        }
+        console.error("kb snapshot: op required (create|list|diff)");
+        process.exit(2);
+        return;
+      }
+      if (sub === "history") {
+        const fid = Number(rest[1]);
+        if (!Number.isFinite(fid)) {
+          console.error("kb history <factId>");
+          process.exit(2);
+        }
+        console.log(JSON.stringify(factHistory(db, fid), null, 2));
+        return;
+      }
       console.error(
-        "kb: subcommand required (extract <storyId> | stats [--series S] | search <query>)"
+        "kb: subcommand required (extract | stats | search | snapshot | history)"
       );
       process.exit(2);
       return;
