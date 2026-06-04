@@ -27,6 +27,7 @@ import { extractStory } from "./knowledge/extract.ts";
 import { entityCount, factCount } from "./knowledge/store.ts";
 import { retrieveCanon } from "./knowledge/retrieve.ts";
 import { checkContinuityFile } from "./knowledge/continuity.ts";
+import { alignBeats, pacingReport } from "./knowledge/structure.ts";
 import type { AgentSelection } from "./agents/router.ts";
 import { listWorkflows, getWorkflow } from "./workflows.ts";
 import { vaultTree, readVaultFile, scanEntities, resolveWikiTarget, writeVaultFile } from "./vault.ts";
@@ -1242,6 +1243,27 @@ export function buildApp(cfg: Config) {
     try {
       const issues = await checkContinuityFile(cfg, db, { series: story.series, file, useLlm });
       return c.json({ issues });
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
+    }
+  });
+
+  // Story-structure: beat-sheet alignment + pacing outliers.
+  app.get("/api/stories/:id/kb/beats", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isFinite(id)) return c.json({ error: "bad id" }, 400);
+    try {
+      return c.json(await alignBeats(cfg, db, id, c.req.query("template") ?? "save-the-cat"));
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
+    }
+  });
+
+  app.get("/api/stories/:id/kb/pacing", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isFinite(id)) return c.json({ error: "bad id" }, 400);
+    try {
+      return c.json(await pacingReport(cfg, db, id));
     } catch (e) {
       return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
     }

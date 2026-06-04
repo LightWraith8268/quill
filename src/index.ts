@@ -21,6 +21,7 @@ import {
 } from "./knowledge/history.ts";
 import { checkContinuityFile } from "./knowledge/continuity.ts";
 import { scopeFromPath } from "./knowledge/scope.ts";
+import { alignBeats, pacingReport } from "./knowledge/structure.ts";
 import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
@@ -54,6 +55,8 @@ Usage:
   quill kb history <factId>                  Canon change log for a fact
   quill kb continuity <file> [--series S]    Check a draft against series canon
     [--no-llm]                               Heuristic only (skip LLM audit)
+  quill kb beats <storyId> [--template T]    Beat-sheet alignment (save-the-cat|hero-journey|three-act)
+  quill kb pacing <storyId>                  Per-chapter pacing + outliers (>1.5σ)
 `;
 
 function arg(rest: string[], flag: string): string | undefined {
@@ -348,6 +351,25 @@ async function main(): Promise<void> {
         const useLlm = !hasFlag(rest, "--no-llm");
         const issues = await checkContinuityFile(cfg, db, { series, file, useLlm });
         console.log(JSON.stringify(issues, null, 2));
+        return;
+      }
+      if (sub === "beats") {
+        const sid = Number(rest[1]);
+        if (!Number.isFinite(sid)) {
+          console.error("kb beats <storyId> [--template save-the-cat|hero-journey|three-act]");
+          process.exit(2);
+        }
+        const result = await alignBeats(cfg, db, sid, arg(rest, "--template") ?? "save-the-cat");
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      if (sub === "pacing") {
+        const sid = Number(rest[1]);
+        if (!Number.isFinite(sid)) {
+          console.error("kb pacing <storyId>");
+          process.exit(2);
+        }
+        console.log(JSON.stringify(await pacingReport(cfg, db, sid), null, 2));
         return;
       }
       console.error(
