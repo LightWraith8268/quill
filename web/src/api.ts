@@ -245,6 +245,14 @@ export const api = {
     req<{ issues: ContinuityIssue[] }>(
       `/stories/${storyId}/kb/continuity?file=${encodeURIComponent(file)}&llm=${useLlm}`
     ),
+  kbStats: (storyId: number) =>
+    req<{ entities: number; facts: number }>(`/stories/${storyId}/kb/stats`),
+  kbSearch: (storyId: number, q: string, facts = 12, chunks = 6) =>
+    req<{ items: CanonItem[] }>(
+      `/stories/${storyId}/kb/search?q=${encodeURIComponent(q)}&facts=${facts}&chunks=${chunks}`
+    ),
+  kbExtract: (storyId: number) =>
+    req<Record<string, unknown>>(`/stories/${storyId}/kb/extract`, { method: "POST" }),
   pronunciationGet: () => req<Record<string, string>>("/pronunciation"),
   pronunciationSet: (map: Record<string, string>) =>
     req<{ ok: boolean }>("/pronunciation", { method: "PUT", body: map }),
@@ -536,6 +544,24 @@ export type ContinuityIssue = {
   canon: string;
   suggestion: string;
   source: "llm" | "heuristic";
+};
+
+export type CanonWeight =
+  | "hard_canon"
+  | "soft_canon"
+  | "outline_plan"
+  | "draft_text"
+  | "note"
+  | "rejected";
+export type CanonItem = {
+  kind: "fact" | "decision" | "timeline" | "summary" | "memory" | "chunk";
+  entity: string | null;
+  canonWeight: CanonWeight | null;
+  title: string;
+  text: string;
+  sourcePath: string | null;
+  sourceRef: string | null;
+  score: number;
 };
 
 export type DailyWordRow = {

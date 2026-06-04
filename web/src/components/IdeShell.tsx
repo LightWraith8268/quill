@@ -22,6 +22,7 @@ import { FileEditor } from "./FileEditor.tsx";
 import { ChatPanel } from "./ChatPanel.tsx";
 import { SearchPanel } from "./SearchPanel.tsx";
 import { LoreBrowser } from "./LoreBrowser.tsx";
+import { CanonBrowser } from "./CanonBrowser.tsx";
 import { CharacterTimeline } from "./CharacterTimeline.tsx";
 import { OutlineView } from "./OutlineView.tsx";
 import { StyleBrowser } from "./StyleBrowser.tsx";
@@ -32,6 +33,7 @@ type CenterView =
   | "editor"
   | "search"
   | "lore"
+  | "canon"
   | "characters"
   | "outline"
   | "workflows"
@@ -54,6 +56,7 @@ const VIEW_META: Record<CenterView, { title: string; icon: string; needsStory?: 
   editor: { title: "Editor", icon: "📝" },
   search: { title: "Search", icon: "🔍" },
   lore: { title: "Lore", icon: "📖" },
+  canon: { title: "Canon", icon: "📜", needsStory: true },
   characters: { title: "Characters", icon: "👤" },
   outline: { title: "Outline", icon: "🗺", needsStory: true },
   workflows: { title: "Workflows", icon: "⚙", needsStory: true },
@@ -64,6 +67,7 @@ const VIEW_META: Record<CenterView, { title: string; icon: string; needsStory?: 
 const AUX_ORDER: AuxView[] = [
   "search",
   "lore",
+  "canon",
   "characters",
   "outline",
   "workflows",
@@ -426,6 +430,8 @@ function AuxBody({
       return <SearchPanel activeStoryId={activeStoryId} />;
     case "lore":
       return <LoreBrowser />;
+    case "canon":
+      return <CanonBrowser storyId={activeStoryId as number} />;
     case "characters":
       return <CharacterTimeline defaultSeries={null} />;
     case "outline":
