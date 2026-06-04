@@ -23,6 +23,8 @@ import {
 } from "./stories.ts";
 import { listMessages, clearMessages } from "./messages.ts";
 import { runChat, runChatRegenerate } from "./chat.ts";
+import { extractStory } from "./knowledge/extract.ts";
+import { entityCount, factCount } from "./knowledge/store.ts";
 import type { AgentSelection } from "./agents/router.ts";
 import { listWorkflows, getWorkflow } from "./workflows.ts";
 import { vaultTree, readVaultFile, scanEntities, resolveWikiTarget, writeVaultFile } from "./vault.ts";
@@ -1194,6 +1196,24 @@ export function buildApp(cfg: Config) {
         Connection: "keep-alive",
       },
     });
+  });
+
+  // Knowledge layer: on-demand canon extraction for a story (entities/facts/edges).
+  app.post("/api/stories/:id/kb/extract", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isFinite(id)) return c.json({ error: "bad id" }, 400);
+    try {
+      const result = await extractStory(cfg, db, id);
+      return c.json(result);
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
+    }
+  });
+
+  app.get("/api/stories/:id/kb/stats", (c) => {
+    const story = getStory(db, Number(c.req.param("id")));
+    const series = story?.series ?? undefined;
+    return c.json({ entities: entityCount(db, series), facts: factCount(db, series) });
   });
 
   app.post("/api/stories/:id/regenerate", async (c) => {

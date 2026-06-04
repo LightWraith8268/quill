@@ -10,6 +10,8 @@ import { runTunnel } from "./tunnel.ts";
 import { startWatcher } from "./watcher.ts";
 import { usageRollup } from "./usage.ts";
 import { buildStoryExport } from "./export.ts";
+import { extractStory } from "./knowledge/extract.ts";
+import { entityCount, factCount } from "./knowledge/store.ts";
 import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
@@ -33,6 +35,8 @@ Usage:
   quill tunnel                               Run cloudflared tunnel (cloudflared/config.yml)
   quill usage [--story N] [--days 7]         Token usage + approx cost rollup
   quill export <storyId> [--out path]        Export full story bundle as JSON
+  quill kb extract <storyId>                 Extract canon graph (entities/facts/relationships)
+  quill kb stats [--series S]                Knowledge-layer counts
 `;
 
 function arg(rest: string[], flag: string): string | undefined {
@@ -218,6 +222,35 @@ async function main(): Promise<void> {
           2
         )
       );
+      return;
+    }
+    case "kb": {
+      const sub = rest[0];
+      const db = openDb(cfg);
+      if (sub === "extract") {
+        const idArg = rest[1];
+        const storyId = Number(idArg);
+        if (!idArg || !Number.isFinite(storyId)) {
+          console.error("kb extract: storyId required");
+          process.exit(2);
+        }
+        const result = await extractStory(cfg, db, storyId);
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      if (sub === "stats") {
+        const series = arg(rest, "--series");
+        console.log(
+          JSON.stringify(
+            { entities: entityCount(db, series), facts: factCount(db, series) },
+            null,
+            2
+          )
+        );
+        return;
+      }
+      console.error("kb: subcommand required (extract <storyId> | stats [--series S])");
+      process.exit(2);
       return;
     }
     default:
