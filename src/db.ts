@@ -210,6 +210,119 @@ function migrate(db: DB, cfg: Config): void {
     );
   `);
 
+  // Phase 21 — knowledge layer (writerbrain port): typed entity graph, canon
+  // facts with weight + scope + temporal applicability, typed relationships,
+  // immutable fact history, named snapshots, and appearance tracking. Series/
+  // book scoped throughout so retrieval can isolate per series and per book.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS kb_entities (
+      id INTEGER PRIMARY KEY,
+      stable_id TEXT NOT NULL UNIQUE,        -- e.g. C1, L3 (prefix by kind)
+      series TEXT,                            -- series scope (NULL = global)
+      kind TEXT NOT NULL,
+      name TEXT NOT NULL,
+      canonical_name TEXT,                    -- normalized for matching
+      tags TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_kb_entities_series ON kb_entities(series, kind);
+    CREATE INDEX IF NOT EXISTS idx_kb_entities_name ON kb_entities(canonical_name);
+
+    CREATE TABLE IF NOT EXISTS kb_aliases (
+      id INTEGER PRIMARY KEY,
+      entity_id INTEGER NOT NULL REFERENCES kb_entities(id) ON DELETE CASCADE,
+      alias TEXT NOT NULL,
+      UNIQUE(entity_id, alias)
+    );
+    CREATE INDEX IF NOT EXISTS idx_kb_aliases_alias ON kb_aliases(alias);
+
+    CREATE TABLE IF NOT EXISTS kb_facts (
+      id INTEGER PRIMARY KEY,
+      entity_id INTEGER REFERENCES kb_entities(id) ON DELETE CASCADE,  -- nullable (world facts)
+      series TEXT,
+      book TEXT,
+      scope TEXT NOT NULL DEFAULT 'series'
+        CHECK(scope IN ('global','series','book','chapter','scene')),
+      kind TEXT NOT NULL DEFAULT 'fact'
+        CHECK(kind IN ('fact','decision','timeline','summary','memory')),
+      canon_weight TEXT NOT NULL DEFAULT 'soft_canon'
+        CHECK(canon_weight IN ('hard_canon','soft_canon','outline_plan','draft_text','note','rejected')),
+      claim TEXT NOT NULL,
+      status TEXT,                            -- decisions: proposed/accepted/rejected/superseded
+      applies_from_book TEXT,
+      applies_from_chapter INTEGER,
+      applies_to_book TEXT,
+      applies_to_chapter INTEGER,
+      source_path TEXT,                       -- vault-relative source
+      source_ref TEXT,                        -- heading / line ref
+      actor TEXT,                             -- manual/auto-import/llm-extract/reviewer
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_kb_facts_entity ON kb_facts(entity_id);
+    CREATE INDEX IF NOT EXISTS idx_kb_facts_scope ON kb_facts(series, book, scope);
+    CREATE INDEX IF NOT EXISTS idx_kb_facts_weight ON kb_facts(canon_weight);
+
+    CREATE TABLE IF NOT EXISTS kb_edges (
+      id INTEGER PRIMARY KEY,
+      src_entity_id INTEGER NOT NULL REFERENCES kb_entities(id) ON DELETE CASCADE,
+      dst_entity_id INTEGER NOT NULL REFERENCES kb_entities(id) ON DELETE CASCADE,
+      rel_type TEXT NOT NULL,
+      directed INTEGER NOT NULL DEFAULT 1,    -- 1=directed, 0=bidirectional
+      description TEXT,
+      weight REAL NOT NULL DEFAULT 1.0,
+      series TEXT,
+      auto INTEGER NOT NULL DEFAULT 0,        -- 1 = auto-linked from fact text
+      source_path TEXT,
+      created_at INTEGER NOT NULL,
+      UNIQUE(src_entity_id, dst_entity_id, rel_type)
+    );
+    CREATE INDEX IF NOT EXISTS idx_kb_edges_src ON kb_edges(src_entity_id);
+    CREATE INDEX IF NOT EXISTS idx_kb_edges_dst ON kb_edges(dst_entity_id);
+
+    CREATE TABLE IF NOT EXISTS kb_fact_history (
+      id INTEGER PRIMARY KEY,
+      fact_id INTEGER NOT NULL,               -- not FK: history outlives the fact
+      entity_id INTEGER,
+      change_type TEXT NOT NULL
+        CHECK(change_type IN ('create','update','delete','promote','demote')),
+      prev_claim TEXT,
+      new_claim TEXT,
+      prev_weight TEXT,
+      new_weight TEXT,
+      actor TEXT,
+      snapshot_id INTEGER,
+      at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_kb_fact_history_fact ON kb_fact_history(fact_id, at);
+
+    CREATE TABLE IF NOT EXISTS kb_snapshots (
+      id INTEGER PRIMARY KEY,
+      series TEXT,
+      name TEXT NOT NULL,
+      note TEXT,
+      state TEXT NOT NULL,                     -- JSON: frozen entities + facts
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_kb_snapshots_series ON kb_snapshots(series, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS kb_appearances (
+      id INTEGER PRIMARY KEY,
+      entity_id INTEGER NOT NULL REFERENCES kb_entities(id) ON DELETE CASCADE,
+      series TEXT,
+      book TEXT,
+      chapter TEXT,
+      file_path TEXT NOT NULL,
+      chunk_id INTEGER,
+      occurrences INTEGER NOT NULL DEFAULT 1,
+      first_seen INTEGER NOT NULL DEFAULT 0,  -- 1 = first appearance in scope
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_kb_appearances_entity ON kb_appearances(entity_id, series, book);
+    CREATE INDEX IF NOT EXISTS idx_kb_appearances_file ON kb_appearances(file_path);
+  `);
+
   const existing = db
     .query<{ name: string }, []>(
       "SELECT name FROM sqlite_master WHERE type='table' AND name='vec_chunks'"
@@ -234,6 +347,22 @@ function migrate(db: DB, cfg: Config): void {
       db.exec("ALTER TABLE stories ADD COLUMN active_scene_path TEXT");
     } catch {
       /* race: column may have been added by another connection */
+    }
+  }
+
+  // Phase 21 — scope columns on chunks so retrieval can isolate per series/book.
+  // Populated by the indexer (derived from the Books/<series>/<book>/… path).
+  const chunkCols = db
+    .query<{ name: string }, []>("SELECT name FROM pragma_table_info('chunks')")
+    .all()
+    .map((r) => r.name);
+  for (const col of ["series", "book"] as const) {
+    if (!chunkCols.includes(col)) {
+      try {
+        db.exec(`ALTER TABLE chunks ADD COLUMN ${col} TEXT`);
+      } catch {
+        /* race: column may have been added by another connection */
+      }
     }
   }
 }
