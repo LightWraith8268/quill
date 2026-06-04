@@ -28,7 +28,9 @@ type ContextUsage = {
   style: { base: string | null; genres: string[] } | null;
   bibles: string[];
   loreHits: { path: string; heading: string | null; score: number }[];
+  canonFacts?: number;
   historyTurns: number;
+  activeScene?: { path: string; bytes: number; source: "pinned" | "auto-mtime" } | null;
 };
 
 export function ChatPanel({ storyId }: Props) {
@@ -261,6 +263,14 @@ export function ChatPanel({ storyId }: Props) {
               </>
             )}
             {lastContext.bibles.length} bible(s), {lastContext.loreHits.length} RAG hit(s),{" "}
+            {lastContext.canonFacts ? (
+              <>
+                <span className="text-tealBright font-medium">
+                  ⚖ {lastContext.canonFacts} canon fact(s)
+                </span>
+                ,{" "}
+              </>
+            ) : null}
             {lastContext.historyTurns} prior turn(s)
             {lastContext.style && (
               <>
@@ -282,6 +292,17 @@ export function ChatPanel({ storyId }: Props) {
                 {h.heading ? ` :: ${h.heading}` : ""}
               </div>
             ))}
+            {lastContext.canonFacts ? (
+              <div className="text-tealBright">
+                ⚖ {lastContext.canonFacts} canon fact(s) grounding this reply
+              </div>
+            ) : null}
+            {lastContext.activeScene && (
+              <div>
+                📍 scene: {lastContext.activeScene.path}{" "}
+                <span className="text-muted">({lastContext.activeScene.source})</span>
+              </div>
+            )}
           </div>
         </details>
       )}
