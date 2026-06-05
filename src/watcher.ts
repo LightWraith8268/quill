@@ -21,6 +21,7 @@ import { join, sep } from "node:path";
 import type { Config } from "./config.ts";
 import type { DB } from "./db.ts";
 import { reindexPath, deleteFileByPath } from "./reindex.ts";
+import { globToRegExp } from "./walk.ts";
 
 const SKIP_DIRS = [".git", ".obsidian", ".trash", "node_modules"];
 const MD_EXT = /\.(md|markdown)$/i;
@@ -39,6 +40,10 @@ export function startWatcher(
 ): StopFn {
   const debounceMs = opts.debounceMs ?? 500;
   const root = cfg.VAULT_PATH;
+  const excludes = cfg.INDEX_EXCLUDE.split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map(globToRegExp);
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
   let watcher: FSWatcher;
 
@@ -47,6 +52,7 @@ export function startWatcher(
       if (!filename) return;
       const relPath = String(filename).split(sep).join("/");
       if (!shouldIndex(relPath)) return;
+      if (excludes.some((re) => re.test(relPath))) return;
 
       const existing = timers.get(relPath);
       if (existing) clearTimeout(existing);

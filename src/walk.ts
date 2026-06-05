@@ -18,7 +18,7 @@ const MD_EXT = /\.(md|markdown)$/i;
 
 // Minimal glob → RegExp: ** = any (incl. /), * = any non-slash, ? = one
 // non-slash. Used to skip indexing of excluded paths (e.g. backup folders).
-function globToRegExp(glob: string): RegExp {
+export function globToRegExp(glob: string): RegExp {
   let re = "";
   for (let i = 0; i < glob.length; i++) {
     const c = glob[i]!;
