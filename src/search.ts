@@ -5,7 +5,7 @@
 import type { Config } from "./config.ts";
 import type { DB } from "./db.ts";
 import { embedBatch, toFloat32Buffer, type EmbedUsageRecorder } from "./embed.ts";
-import { rerank, type RerankUsageRecorder } from "./rerank.ts";
+import { rerank, localRerank, type RerankUsageRecorder } from "./rerank.ts";
 
 export type SearchMode = "lore" | "style" | "uncensored" | "any";
 
@@ -218,11 +218,14 @@ export async function search(
   hits.sort((a, b) => (b.rrfScore ?? 0) - (a.rrfScore ?? 0));
   hits = hits.slice(0, opts.candidates);
 
-  // Rerank needs Voyage; skip it (RRF order stands) when there's no key, e.g.
-  // the free local-embeddings setup.
-  if (opts.useRerank && cfg.VOYAGE_API_KEY && hits.length > 0) {
+  // Rerank: Voyage cross-encoder when a key is set, else a dependency-free
+  // local heuristic reranker (free/local-embeddings path). Either way the RRF
+  // pool is reordered to top-K.
+  if (opts.useRerank && hits.length > 0) {
     const docs = hits.map((h) => h.content);
-    const ranked = await rerank(cfg, query, docs, opts.topK, opts.onRerankUsage);
+    const ranked = cfg.VOYAGE_API_KEY
+      ? await rerank(cfg, query, docs, opts.topK, opts.onRerankUsage)
+      : localRerank(query, docs, opts.topK);
     hits = ranked.map((r) => ({
       ...hits[r.index]!,
       rerankScore: r.score,

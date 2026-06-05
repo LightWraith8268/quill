@@ -16,6 +16,41 @@ export type RerankUsageRecorder = (u: {
   model?: string | null;
 }) => void;
 
+// Dependency-free local reranker for the free/local-embeddings path (no Voyage
+// key). Scores each candidate by query-term coverage + term frequency + an
+// exact-phrase bonus. Not a neural cross-encoder, but a real lift over raw RRF.
+function rrTokenize(s: string): string[] {
+  return s.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length >= 2);
+}
+
+export function localRerank(
+  query: string,
+  documents: string[],
+  topK: number
+): { index: number; score: number }[] {
+  const qSet = new Set(rrTokenize(query));
+  const phrase = query.toLowerCase().trim();
+  const scored = documents.map((doc, index) => {
+    const lower = doc.toLowerCase();
+    const counts = new Map<string, number>();
+    for (const t of rrTokenize(doc)) counts.set(t, (counts.get(t) ?? 0) + 1);
+    let overlap = 0;
+    let tf = 0;
+    for (const t of qSet) {
+      const c = counts.get(t) ?? 0;
+      if (c > 0) {
+        overlap++;
+        tf += Math.log(1 + c);
+      }
+    }
+    const coverage = qSet.size ? overlap / qSet.size : 0;
+    const phraseBonus = phrase.length >= 4 && lower.includes(phrase) ? 1.5 : 0;
+    return { index, score: coverage * 2 + tf * 0.1 + phraseBonus };
+  });
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, Math.min(topK, scored.length));
+}
+
 export async function rerank(
   cfg: Config,
   query: string,
