@@ -23,6 +23,10 @@ const Schema = z.object({
   // segments are literals or :series / :book placeholders. First match wins.
   // Add your tree's shape, e.g. novels/series/:series/books/:book
   SCOPE_PATTERNS: z.string().default("Books/:series/:book,Story Ideas/:series"),
+  // Comma-separated globs (relative to VAULT_PATH) to skip when indexing —
+  // e.g. backup folders. Default prunes *.bak* dirs/files. Matches a dir to
+  // skip the whole subtree (`**/*.bak-*`) or files (`**/*.bak*/**`).
+  INDEX_EXCLUDE: z.string().default("**/*.bak*"),
   EMBED_RPM: z.coerce.number().default(3),
   EMBED_TPM: z.coerce.number().default(10000),
   EMBED_RETRY_MAX: z.coerce.number().default(6),

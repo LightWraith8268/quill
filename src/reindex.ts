@@ -39,7 +39,10 @@ export async function reindex(
 ): Promise<ReindexResult> {
   const t0 = Date.now();
   console.log(`[reindex] walking ${cfg.VAULT_PATH}`);
-  const fsFiles = await walkVault(cfg.VAULT_PATH);
+  const fsFiles = await walkVault(
+    cfg.VAULT_PATH,
+    cfg.INDEX_EXCLUDE.split(",").map((s) => s.trim()).filter(Boolean)
+  );
   console.log(`[reindex] found ${fsFiles.length} markdown files`);
 
   const dbFiles = new Map<string, FileRow>();
