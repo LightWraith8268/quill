@@ -259,6 +259,17 @@ export const api = {
     ),
   kbPacing: (storyId: number) =>
     req<PacingReport>(`/stories/${storyId}/kb/pacing`),
+  kbSnapshots: (storyId: number) =>
+    req<{ snapshots: SnapshotMeta[] }>(`/stories/${storyId}/kb/snapshots`),
+  kbSnapshotCreate: (storyId: number, name?: string, note?: string) =>
+    req<{ id: number; name: string }>(`/stories/${storyId}/kb/snapshots`, {
+      method: "POST",
+      body: { name, note },
+    }),
+  kbSnapshotDiff: (storyId: number, a: number, b: number) =>
+    req<{ diffs: FactDiff[] }>(
+      `/stories/${storyId}/kb/snapshots/diff?a=${a}&b=${b}`
+    ),
   pronunciationGet: () => req<Record<string, string>>("/pronunciation"),
   pronunciationSet: (map: Record<string, string>) =>
     req<{ ok: boolean }>("/pronunciation", { method: "PUT", body: map }),
@@ -594,6 +605,21 @@ export type PacingReport = {
   stdev: number;
   chapters: PacingChapter[];
   outliers: string[];
+};
+
+export type SnapshotMeta = {
+  id: number;
+  series: string | null;
+  name: string;
+  note: string | null;
+  created_at: number;
+};
+export type FactDiff = {
+  entity: string;
+  claim: string;
+  type: "added" | "removed" | "reweighted";
+  from?: string;
+  to?: string;
 };
 
 export type DailyWordRow = {

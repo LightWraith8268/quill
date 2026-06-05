@@ -28,6 +28,7 @@ import { entityCount, factCount } from "./knowledge/store.ts";
 import { retrieveCanon } from "./knowledge/retrieve.ts";
 import { checkContinuityFile } from "./knowledge/continuity.ts";
 import { alignBeats, pacingReport } from "./knowledge/structure.ts";
+import { createSnapshot, listSnapshots, diffSnapshots } from "./knowledge/history.ts";
 import { openWorkspace } from "./workspace.ts";
 import type { AgentSelection } from "./agents/router.ts";
 import { listWorkflows, getWorkflow } from "./workflows.ts";
@@ -1267,6 +1268,46 @@ export function buildApp(cfg: Config) {
       return c.json(await pacingReport(cfg, db, id));
     } catch (e) {
       return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
+    }
+  });
+
+  // Canon snapshots: freeze / list / diff the series' entity+fact state.
+  app.get("/api/stories/:id/kb/snapshots", (c) => {
+    const story = getStory(db, Number(c.req.param("id")));
+    if (!story) return c.json({ error: "story not found" }, 404);
+    return c.json({ snapshots: listSnapshots(db, story.series) });
+  });
+
+  app.post("/api/stories/:id/kb/snapshots", async (c) => {
+    const story = getStory(db, Number(c.req.param("id")));
+    if (!story) return c.json({ error: "story not found" }, 404);
+    const body = (await c.req.json().catch(() => ({}))) as {
+      name?: unknown;
+      note?: unknown;
+    };
+    const name =
+      typeof body.name === "string" && body.name.trim()
+        ? body.name.trim()
+        : new Date().toISOString();
+    const note = typeof body.note === "string" ? body.note : undefined;
+    try {
+      const snapshotId = createSnapshot(db, story.series, name, note);
+      return c.json({ id: snapshotId, name });
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
+    }
+  });
+
+  app.get("/api/stories/:id/kb/snapshots/diff", (c) => {
+    const a = Number(c.req.query("a"));
+    const b = Number(c.req.query("b"));
+    if (!Number.isFinite(a) || !Number.isFinite(b)) {
+      return c.json({ error: "a and b required" }, 400);
+    }
+    try {
+      return c.json({ diffs: diffSnapshots(db, a, b) });
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 404);
     }
   });
 
