@@ -54,10 +54,11 @@ Full steps in `cloudflared/README.md`. Short:
 - **PATH:** the units set a PATH covering `~/.bun/bin` + common dirs. If `which claude` (or `cloudflared`) is elsewhere, edit `~/.config/systemd/user/quill-server.service` `Environment=PATH=...`, then `systemctl --user daemon-reload && systemctl --user restart quill-server`.
 - **Auth:** `HTTP_TOKEN` bearer (the web login uses it). Cloudflare Access can layer SSO on top.
 - **Free embeddings (no Voyage key, long-term):** install Ollama on the box —
-  `curl -fsSL https://ollama.com/install.sh | sh` then `ollama pull nomic-embed-text` —
-  and in `.env` set `EMBED_PROVIDER=ollama`, `EMBED_MODEL=nomic-embed-text`,
-  `EMBED_DIM=768` (must match the model; set it before the first reindex). Then
-  `systemctl --user restart quill-server` and `bun run src/index.ts reindex`.
-  Unlimited, no key, no payment. The Voyage reranker auto-skips; hybrid BM25 +
-  vector RRF still applies. (Ollama runs as its own service; `ollama serve`.)
+  `curl -fsSL https://ollama.com/install.sh | sh` — pull an embed model, and in
+  `.env` set `EMBED_PROVIDER=ollama`, `EMBED_MODEL`, `EMBED_DIM` (must match the
+  model; set before the first reindex). Then restart + reindex. Smallest that
+  works: `ollama pull all-minilm` → `EMBED_MODEL=all-minilm`, `EMBED_DIM=384`
+  (~46 MB, fast on CPU). Better quality if you have room: `nomic-embed-text` /
+  `EMBED_DIM=768`. Unlimited, no key, no payment; the Voyage reranker auto-skips
+  (BM25 + vector RRF carries retrieval). (Ollama runs as its own service.)
 - **Direct (no tunnel):** to skip cloudflared and reach it over the tailnet instead, set `HTTP_HOST=0.0.0.0` in `.env` (keep `HTTP_TOKEN` set), open the port, and reach `http://<tailscale-ip>:7878`. WSL2 needs mirrored networking (`.wslconfig` `networkingMode=mirrored`) or Tailscale running inside the distro.
