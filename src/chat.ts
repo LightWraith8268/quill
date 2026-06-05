@@ -23,17 +23,20 @@ import { renderCanonPack } from "./knowledge/contextpack.ts";
 import { storyCwd } from "./workspace.ts";
 import { pickAgent, streamFor, type AgentName, type AgentSelection } from "./agents/router.ts";
 import { makeRecorder } from "./usage.ts";
+import { captureBaseline, snapshotChanges, type Baseline } from "./agentguard.ts";
 
 const HISTORY_TURNS = 12;
 const LORE_HITS = 5;
 
-// Appended to the system prompt in agent mode so Claude knows it may act on the
-// vault directly (it has Read/Write/Edit/Grep/Glob/Bash in the story folder).
-const AGENT_MODE_INSTRUCTIONS = [
-  `=== AGENT MODE ===`,
-  `You can directly read, search, and edit files in this story folder using your tools — you are not limited to the context above. Prefer reading the actual files when you need specifics.`,
-  `When the user asks you to write or revise prose, edit the relevant manuscript file in place (Edit/Write) rather than only printing the text in chat. After editing, briefly summarize what you changed and where.`,
-  `Stay inside this story folder. Do not run destructive shell commands. Keep manuscript files clean markdown — no code fences around prose.`,
+// The single-chat contract for the tool-capable agent (Claude): advise by
+// default, act (edit files) only when clearly asked. Edits are snapshotted
+// first (agentguard), so acting is safe + reversible.
+const AGENT_CONTRACT = [
+  `=== TOOLS ===`,
+  `You can read, search, and edit files in this story folder with your tools — you are not limited to the context above. Read the actual files when you need specifics.`,
+  `Default to advising in chat. ONLY edit/write files when the user clearly asks you to change, write, draft, revise, or fix something on disk. For questions, opinions, brainstorming, or feedback, just answer — do not touch files.`,
+  `When you do edit, change the relevant manuscript file in place (Edit/Write), keep it clean markdown (no code fences around prose), then briefly summarize what you changed and where.`,
+  `Stay inside this story folder. Never run destructive shell commands.`,
 ].join("\n");
 const CANON_FACTS = 8;
 const STYLE_LORE_PREVIEW_CHARS = 600;
@@ -103,18 +106,17 @@ export type ChatRequest = {
   storyId: number;
   message: string;
   agent: AgentSelection;
-  // "agent" = let Claude read/write/edit/search the vault (bypassPermissions,
-  // sandboxed to the story folder). "chat" (default) = advisory, no tools.
-  mode?: "chat" | "agent";
 };
 
 export type ToolUse = { name: string; ok: boolean; detail?: string };
+export type EditSummary = { changed: string[]; created: string[] };
 
 export type ChatStreamEvent =
   | { type: "context"; usage: ContextUsage; agent: AgentName; routeReason: string }
   | { type: "delta"; text: string }
   | { type: "thinking"; text: string }
   | { type: "tool"; phase: "start" | "end"; id: string; name?: string; detail?: string; ok?: boolean }
+  | { type: "changes"; changed: string[]; created: string[] }
   | { type: "done"; assistantId: number }
   | { type: "error"; error: string };
 
@@ -125,7 +127,8 @@ export type ContextUsage = {
   canonFacts?: number;
   historyTurns: number;
   activeScene?: { path: string; bytes: number; source: "pinned" | "auto-mtime" } | null;
-  tools?: ToolUse[]; // agent-mode vault actions taken this turn
+  tools?: ToolUse[]; // vault actions the agent took this turn
+  edits?: EditSummary; // files changed/created (snapshotted, reversible)
 };
 
 export async function* runChat(
@@ -149,18 +152,24 @@ export async function* runChat(
   });
 
   const t0 = Date.now();
+  const route = pickAgent(req.agent, req.message);
+  // The tool-capable agent is Claude; it acts only when asked (AGENT_CONTRACT)
+  // and edits are snapshotted first. Codex/Gemini stay advisory (no tools).
+  const isAgentCapable = route.agent === "claude";
+
+  // Capture a baseline of the story's files in parallel with context-building,
+  // so any edits this turn can be snapshotted (reversible) afterward.
+  const baselineP: Promise<Baseline | null> = isAgentCapable
+    ? captureBaseline(cfg, story).catch(() => null)
+    : Promise.resolve(null);
+
   const built = await buildContext(cfg, db, story, history, req.message);
   const contextMs = Date.now() - t0;
   // Note: buildContext already recorded embed+rerank usage internally.
-  // Agent mode needs the tool-capable agent (Claude), so pin it there.
-  const isAgent = req.mode === "agent";
-  const route = isAgent
-    ? { agent: "claude" as AgentName, reason: "agent mode → Claude (vault tools)" }
-    : pickAgent(req.agent, req.message);
   yield { type: "context", usage: built.usage, agent: route.agent, routeReason: route.reason };
 
-  const systemPrompt = isAgent
-    ? built.systemPrompt + "\n\n" + AGENT_MODE_INSTRUCTIONS
+  const systemPrompt = isAgentCapable
+    ? built.systemPrompt + "\n\n" + AGENT_CONTRACT
     : built.systemPrompt;
   const userPrompt = req.message;
 
@@ -181,7 +190,7 @@ export async function* runChat(
     const stream = streamFor(route.agent, userPrompt, {
       systemPrompt,
       cwd: storyCwd(cfg, story),
-      agentic: isAgent,
+      agentic: isAgentCapable,
       // Tool events are sync callbacks; queue and drain interleaved with the
       // stream so chips appear in order. Thinking comes through the stream
       // itself (below), so it streams live during the pre-prose wait.
@@ -222,6 +231,24 @@ export async function* runChat(
   }
 
   if (tools.length) built.usage.tools = tools;
+
+  // Snapshot the pre-edit content of any files the agent changed (reversible),
+  // and tell the UI. Only when a write-capable tool actually ran this turn.
+  const baseline = await baselineP;
+  const wrote = tools.some((t) =>
+    ["Write", "Edit", "NotebookEdit", "Bash"].includes(t.name)
+  );
+  if (baseline && wrote) {
+    try {
+      const edits = await snapshotChanges(db, cfg, story, baseline);
+      if (edits.changed.length || edits.created.length) {
+        built.usage.edits = edits;
+        yield { type: "changes", changed: edits.changed, created: edits.created };
+      }
+    } catch {
+      /* snapshot best-effort */
+    }
+  }
 
   const assistant = appendMessage(db, {
     storyId: story.id,

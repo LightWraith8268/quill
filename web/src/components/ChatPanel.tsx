@@ -8,7 +8,6 @@ import {
   regenerateStream,
   type AgentName,
   type AgentSelection,
-  type ChatMode,
   type ChatMessage,
   type Story,
   type UsageResponse,
@@ -42,9 +41,9 @@ export function ChatPanel({ storyId }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [agent, setAgent] = useState<AgentSelection>("auto");
-  const [mode, setMode] = useState<ChatMode>("chat");
   const [streamTools, setStreamTools] = useState<ToolChip[]>([]);
   const [streamThinking, setStreamThinking] = useState("");
+  const [lastEdits, setLastEdits] = useState<{ changed: string[]; created: string[] } | null>(null);
   const [busy, setBusy] = useState(false);
   const [streamText, setStreamText] = useState("");
   const [lastContext, setLastContext] = useState<ContextUsage | null>(null);
@@ -101,6 +100,7 @@ export function ChatPanel({ storyId }: Props) {
     setStreamText("");
     setStreamTools([]);
     setStreamThinking("");
+    setLastEdits(null);
     setLastContext(null);
     setRoutedAgent(null);
     setRouteReason(null);
@@ -121,7 +121,7 @@ export function ChatPanel({ storyId }: Props) {
 
     try {
       let buffered = "";
-      for await (const ev of chatStream(storyId, text, agent, mode)) {
+      for await (const ev of chatStream(storyId, text, agent)) {
         if (ev.event === "context") {
           const data = ev.data as {
             usage: ContextUsage;
@@ -151,6 +151,9 @@ export function ChatPanel({ storyId }: Props) {
               ? [...cur, { id: d.id, name: d.name ?? "tool", detail: d.detail, done: false }]
               : cur.map((t) => (t.id === d.id ? { ...t, done: true, ok: d.ok } : t))
           );
+        } else if (ev.event === "changes") {
+          const d = ev.data as { changed: string[]; created: string[] };
+          setLastEdits({ changed: d.changed, created: d.created });
         } else if (ev.event === "done") {
           // Refetch to get the final assistant row
           const r = await api.storyMessages(storyId);
@@ -248,6 +251,22 @@ export function ChatPanel({ storyId }: Props) {
         {insertOk && (
           <div className="bg-teal/20 text-paper border border-tealBright/40 text-xs p-2 rounded">
             Inserted into <span className="font-mono">{insertOk}</span>.
+          </div>
+        )}
+        {lastEdits && (lastEdits.changed.length > 0 || lastEdits.created.length > 0) && (
+          <div className="bg-tealBright/10 border border-tealBright/40 text-xs p-2 rounded space-y-0.5">
+            <div className="text-tealBright font-medium">
+              ✎ Agent edited {lastEdits.changed.length + lastEdits.created.length} file
+              {lastEdits.changed.length + lastEdits.created.length === 1 ? "" : "s"} — snapshotted,
+              reversible from each file's draft history.
+            </div>
+            {[...lastEdits.changed.map((p) => ({ p, tag: "changed" })),
+              ...lastEdits.created.map((p) => ({ p, tag: "new" }))].map(({ p, tag }) => (
+              <div key={p} className="font-mono text-muted truncate" title={p}>
+                <span className="text-[10px] uppercase mr-1">{tag}</span>
+                {p}
+              </div>
+            ))}
           </div>
         )}
         {messages.map((m) => (
@@ -383,46 +402,20 @@ export function ChatPanel({ storyId }: Props) {
       <div className="card">
         {storyId && <PinnedContext storyId={storyId} />}
         <div className="flex flex-wrap items-center gap-2 mb-2">
-          <div className="flex rounded-md border border-muted/30 overflow-hidden text-xs">
-            <button
-              type="button"
-              onClick={() => setMode("chat")}
-              className={`px-3 py-1.5 ${mode === "chat" ? "bg-teal text-paper" : "text-muted hover:text-tealBright"}`}
-              title="Advisory — Claude answers in chat, no file changes"
-            >
-              Chat
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode("agent")}
-              className={`px-3 py-1.5 ${mode === "agent" ? "bg-teal text-paper" : "text-muted hover:text-tealBright"}`}
-              title="Agent — Claude can read/search/edit files in this story folder"
-            >
-              ⚡ Agent
-            </button>
-          </div>
           <select
             className="input flex-1 min-w-0"
             value={agent}
             onChange={(e) => setAgent(e.target.value as AgentSelection)}
-            disabled={mode === "agent"}
-            title={mode === "agent" ? "Agent mode always uses Claude (the tool-capable agent)" : undefined}
           >
             <option value="auto">Auto-route (smart pick)</option>
-            <option value="claude">Claude — drafting / voice</option>
-            <option value="codex">Codex — structural / brainstorm</option>
-            <option value="gemini">Gemini — long-context / continuity</option>
+            <option value="claude">Claude — drafting / voice / acts on files</option>
+            <option value="codex">Codex — structural / brainstorm (advisory)</option>
+            <option value="gemini">Gemini — long-context / continuity (advisory)</option>
           </select>
           <button onClick={clearChat} className="btn btn-ghost text-xs ml-auto">
             Clear chat
           </button>
         </div>
-        {mode === "agent" && (
-          <p className="text-xs text-tealBright/80 mb-2">
-            ⚡ Agent mode: Claude can read, search, and <span className="font-medium">edit files</span> in
-            this story folder. Changes are written to disk.
-          </p>
-        )}
         <textarea
           className="input w-full font-ui resize-none"
           rows={3}
