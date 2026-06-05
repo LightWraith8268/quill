@@ -25,6 +25,20 @@ export type RouteResult = {
 export function autoRoute(message: string): { agent: AgentName; reason: string } {
   const m = message.toLowerCase();
 
+  // File-edit intent must go to the only tool-capable agent (Claude). Otherwise
+  // a "rewrite chapter 3" routed to Codex/Gemini would silently fail to act.
+  // Claude can still just advise if that's what's wanted (per its contract).
+  const editIntent =
+    /\b(rewrite|re-?write|revise|redraft|edit|overwrite|save|update|apply|insert|append|replace|delete|remove|rename|tighten|expand|trim|shorten|punch up|fix(?: up)?)\b/.test(
+      m
+    ) ||
+    /\b(write|draft|add|change|make)\b[^.?!]*\b(file|chapter|scene|manuscript|draft|section|paragraph|it|this)\b/.test(
+      m
+    );
+  if (editIntent) {
+    return { agent: "claude", reason: "auto: file-edit intent → Claude (tool-capable)" };
+  }
+
   // Gemini: bulk / continuity / cross-book signals
   const geminiHints = [
     "continuity",

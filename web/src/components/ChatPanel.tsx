@@ -171,6 +171,7 @@ export function ChatPanel({ storyId }: Props) {
       setErr((e as Error).message || "chat failed");
       setStreamText("");
       setStreamThinking("");
+      setLastEdits(null);
     } finally {
       setBusy(false);
     }
@@ -408,9 +409,9 @@ export function ChatPanel({ storyId }: Props) {
             onChange={(e) => setAgent(e.target.value as AgentSelection)}
           >
             <option value="auto">Auto-route (smart pick)</option>
-            <option value="claude">Claude — drafting / voice / acts on files</option>
-            <option value="codex">Codex — structural / brainstorm (advisory)</option>
-            <option value="gemini">Gemini — long-context / continuity (advisory)</option>
+            <option value="claude">Claude — drafting / voice · can edit files</option>
+            <option value="codex">Codex — structural / brainstorm · advisory, no edits</option>
+            <option value="gemini">Gemini — long-context / continuity · advisory, no edits</option>
           </select>
           <button onClick={clearChat} className="btn btn-ghost text-xs ml-auto">
             Clear chat

@@ -335,8 +335,13 @@ export async function* runChatRegenerate(
   const fullHistory = listMessages(db, story.id, HISTORY_TURNS * 2);
   const priorHistory = fullHistory.slice(0, -1);
 
-  const built = await buildContext(cfg, db, story, priorHistory, userPrompt);
   const route = pickAgent(req.agent, userPrompt);
+  const isAgentCapable = route.agent === "claude";
+  const baselineP: Promise<Baseline | null> = isAgentCapable
+    ? captureBaseline(cfg, story).catch(() => null)
+    : Promise.resolve(null);
+
+  const built = await buildContext(cfg, db, story, priorHistory, userPrompt);
   yield {
     type: "context",
     usage: built.usage,
@@ -344,13 +349,34 @@ export async function* runChatRegenerate(
     routeReason: route.reason,
   };
 
+  const systemPrompt = isAgentCapable
+    ? built.systemPrompt + "\n\n" + AGENT_CONTRACT
+    : built.systemPrompt;
   const agentRecorder = makeRecorder(db, route.agent, story.id);
+
+  // Same tool/thinking bridge + edit safety net as runChat, so a regenerated
+  // turn is just as capable (and just as reversible) as a fresh one.
+  const pending: ChatStreamEvent[] = [];
+  const toolDetail = new Map<string, { name: string; detail?: string }>();
+  const tools: ToolUse[] = [];
 
   let full = "";
   try {
-    for await (const chunk of streamFor(route.agent, userPrompt, {
-      systemPrompt: built.systemPrompt,
+    const stream = streamFor(route.agent, userPrompt, {
+      systemPrompt,
       cwd: storyCwd(cfg, story),
+      agentic: isAgentCapable,
+      onToolCall: (e) => {
+        if (e.phase === "start") {
+          const detail = toolDetailFor(e.name, e.input);
+          toolDetail.set(e.id, { name: e.name, detail });
+          pending.push({ type: "tool", phase: "start", id: e.id, name: e.name, detail });
+        } else {
+          const meta = toolDetail.get(e.id);
+          tools.push({ name: meta?.name ?? "tool", ok: e.ok, detail: meta?.detail });
+          pending.push({ type: "tool", phase: "end", id: e.id, ok: e.ok });
+        }
+      },
       onUsage: (u) =>
         agentRecorder({
           inputTokens: u.inputTokens,
@@ -358,7 +384,9 @@ export async function* runChatRegenerate(
           cachedInputTokens: u.cachedInputTokens,
           model: u.model,
         }),
-    })) {
+    });
+    for await (const chunk of stream) {
+      while (pending.length) yield pending.shift()!;
       if (typeof chunk !== "string") {
         yield { type: "thinking", text: chunk.thinking };
         continue;
@@ -366,9 +394,28 @@ export async function* runChatRegenerate(
       full += chunk;
       yield { type: "delta", text: chunk };
     }
+    while (pending.length) yield pending.shift()!;
   } catch (e) {
     yield { type: "error", error: e instanceof Error ? e.message : String(e) };
     return;
+  }
+
+  if (tools.length) built.usage.tools = tools;
+
+  const baseline = await baselineP;
+  const wrote = tools.some((t) =>
+    ["Write", "Edit", "NotebookEdit", "Bash"].includes(t.name)
+  );
+  if (baseline && wrote) {
+    try {
+      const edits = await snapshotChanges(db, cfg, story, baseline);
+      if (edits.changed.length || edits.created.length) {
+        built.usage.edits = edits;
+        yield { type: "changes", changed: edits.changed, created: edits.created };
+      }
+    } catch {
+      /* best-effort */
+    }
   }
 
   const assistant = appendMessage(db, {
