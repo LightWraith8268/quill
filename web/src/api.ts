@@ -290,6 +290,17 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ text, pass, storyId }),
     }),
+  voices: (storyId: number) =>
+    req<{ voices: VoiceListItem[] }>(`/stories/${storyId}/voices`),
+  voiceProfile: (storyId: number, eid: number) =>
+    req<VoiceProfile>(`/stories/${storyId}/voices/${eid}`),
+  voiceBuild: (storyId: number, eid: number) =>
+    req<VoiceProfile>(`/stories/${storyId}/voices/${eid}/build`, { method: "POST" }),
+  voiceRewrite: (storyId: number, eid: number, text: string) =>
+    req<{ rewritten: string; name: string; model: string | null }>(
+      `/stories/${storyId}/voices/${eid}/rewrite`,
+      { method: "POST", body: JSON.stringify({ text }) }
+    ),
   kbSearch: (storyId: number, q: string, facts = 12, chunks = 6) =>
     req<{ items: CanonItem[] }>(
       `/stories/${storyId}/kb/search?q=${encodeURIComponent(q)}&facts=${facts}&chunks=${chunks}`
@@ -696,6 +707,19 @@ export type KnowledgeState = {
   future: TimelineFact[];
 };
 export type EditorialPassMeta = { id: string; label: string; blurb: string };
+export type VoiceListItem = {
+  entityId: number;
+  name: string;
+  facts: number;
+  hasProfile: boolean;
+};
+export type VoiceProfile = {
+  entityId: number;
+  name: string;
+  signature: string;
+  examples: string[];
+  updatedAt: number | null;
+};
 export type FactHistoryRow = {
   change_type: string;
   prev_claim: string | null;

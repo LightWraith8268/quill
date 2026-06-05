@@ -67,6 +67,12 @@ import { inlineEditStream, inlineContinueStream, inlineGhost } from "./inline.ts
 import { editorialPass, isEditorialPass, EDITORIAL_PASSES } from "./editorial.ts";
 import { draftBeatStream } from "./beatdraft.ts";
 import {
+  listVoices,
+  getVoiceProfile,
+  buildVoiceProfile,
+  rewriteToVoice,
+} from "./charvoice.ts";
+import {
   listOutline,
   createNode,
   updateNode,
@@ -874,6 +880,46 @@ export function buildApp(cfg: Config) {
       return c.json({ error: "bad id" }, 400);
     }
     return inlineSse(draftBeatStream(cfg, db, id, nodeId));
+  });
+
+  // ===== Per-character voice engine =====
+
+  app.get("/api/stories/:id/voices", (c) => {
+    const story = getStory(db, Number(c.req.param("id")));
+    if (!story) return c.json({ error: "story not found" }, 404);
+    return c.json({ voices: listVoices(db, story.series) });
+  });
+
+  app.get("/api/stories/:id/voices/:eid", (c) => {
+    const eid = Number(c.req.param("eid"));
+    if (!Number.isFinite(eid)) return c.json({ error: "bad id" }, 400);
+    const profile = getVoiceProfile(db, eid);
+    if (!profile) return c.json({ error: "entity not found" }, 404);
+    return c.json(profile);
+  });
+
+  app.post("/api/stories/:id/voices/:eid/build", async (c) => {
+    const id = Number(c.req.param("id"));
+    const eid = Number(c.req.param("eid"));
+    if (!Number.isFinite(id) || !Number.isFinite(eid)) return c.json({ error: "bad id" }, 400);
+    try {
+      return c.json(await buildVoiceProfile(cfg, db, id, eid));
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
+    }
+  });
+
+  app.post("/api/stories/:id/voices/:eid/rewrite", async (c) => {
+    const id = Number(c.req.param("id"));
+    const eid = Number(c.req.param("eid"));
+    if (!Number.isFinite(id) || !Number.isFinite(eid)) return c.json({ error: "bad id" }, 400);
+    const body = (await c.req.json().catch(() => ({}))) as { text?: string };
+    if (!body.text || !body.text.trim()) return c.json({ error: "text required" }, 400);
+    try {
+      return c.json(await rewriteToVoice(cfg, db, id, eid, body.text));
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
+    }
   });
 
   // ===== Reading-pass =====

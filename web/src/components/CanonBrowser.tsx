@@ -10,8 +10,9 @@ import { api, type CanonItem, type CanonWeight } from "../api.ts";
 import { EntityBrowser } from "./EntityBrowser.tsx";
 import { CanonReview } from "./CanonReview.tsx";
 import { TimelineBrowser } from "./TimelineBrowser.tsx";
+import { VoicePanel } from "./VoicePanel.tsx";
 
-type CanonMode = "search" | "entities" | "review" | "timeline";
+type CanonMode = "search" | "entities" | "review" | "timeline" | "voices";
 
 const WEIGHT_ORDER: CanonWeight[] = [
   "hard_canon",
@@ -126,6 +127,7 @@ export function CanonBrowser({ storyId }: { storyId: number }) {
           {tab("search", "Search")}
           {tab("entities", "Entities")}
           {tab("timeline", "Timeline")}
+          {tab("voices", "Voices")}
           {tab("review", "Review", stats?.pending)}
         </div>
         <button
@@ -144,7 +146,7 @@ export function CanonBrowser({ storyId }: { storyId: number }) {
         </div>
       )}
 
-      {stats && stats.facts === 0 && mode !== "review" && mode !== "timeline" && (
+      {stats && stats.facts === 0 && mode !== "review" && mode !== "timeline" && mode !== "voices" && (
         <div className="card text-center text-muted py-8 text-sm">
           No canon extracted yet for this story. Hit{" "}
           <span className="text-tealBright">Re-extract canon</span> to build it
@@ -159,6 +161,8 @@ export function CanonBrowser({ storyId }: { storyId: number }) {
       )}
 
       {mode === "timeline" && <TimelineBrowser storyId={storyId} />}
+
+      {mode === "voices" && <VoicePanel storyId={storyId} />}
 
       {mode === "entities" && stats && stats.facts > 0 && (
         <EntityBrowser storyId={storyId} />

@@ -351,6 +351,19 @@ function migrate(db: DB, cfg: Config): void {
     CREATE INDEX IF NOT EXISTS idx_kb_pending_claim ON kb_pending_facts(LOWER(claim));
   `);
 
+  // Per-character voice engine: a cached, LLM-derived voice signature for a
+  // character entity (diction, rhythm, verbal tics, sample lines), used to flag
+  // off-voice dialogue and to "rewrite to match this character's voice".
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS kb_character_voice (
+      entity_id INTEGER PRIMARY KEY REFERENCES kb_entities(id) ON DELETE CASCADE,
+      series TEXT,
+      signature TEXT NOT NULL,    -- the compact voice spec (prose)
+      examples TEXT,              -- representative lines, newline-separated
+      updated_at INTEGER NOT NULL
+    );
+  `);
+
   const existing = db
     .query<{ name: string }, []>(
       "SELECT name FROM sqlite_master WHERE type='table' AND name='vec_chunks'"
