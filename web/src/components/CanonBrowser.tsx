@@ -8,6 +8,9 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, type CanonItem, type CanonWeight } from "../api.ts";
 import { EntityBrowser } from "./EntityBrowser.tsx";
+import { CanonReview } from "./CanonReview.tsx";
+
+type CanonMode = "search" | "entities" | "review";
 
 const WEIGHT_ORDER: CanonWeight[] = [
   "hard_canon",
@@ -35,8 +38,8 @@ const WEIGHT_TONE: Record<CanonWeight, string> = {
 };
 
 export function CanonBrowser({ storyId }: { storyId: number }) {
-  const [stats, setStats] = useState<{ entities: number; facts: number } | null>(null);
-  const [mode, setMode] = useState<"search" | "entities">("search");
+  const [stats, setStats] = useState<{ entities: number; facts: number; pending?: number } | null>(null);
+  const [mode, setMode] = useState<CanonMode>("search");
   const [q, setQ] = useState("");
   const [items, setItems] = useState<CanonItem[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -91,7 +94,7 @@ export function CanonBrowser({ storyId }: { storyId: number }) {
   const facts = items?.filter((i) => i.kind !== "chunk") ?? [];
   const chunks = items?.filter((i) => i.kind === "chunk") ?? [];
 
-  const tab = (id: "search" | "entities", label: string) => (
+  const tab = (id: CanonMode, label: string, badge?: number) => (
     <button
       onClick={() => setMode(id)}
       className={`px-2 py-1 ${
@@ -101,6 +104,11 @@ export function CanonBrowser({ storyId }: { storyId: number }) {
       }`}
     >
       {label}
+      {badge ? (
+        <span className="ml-1 inline-flex items-center justify-center rounded-full bg-tealBright text-bg text-[10px] px-1.5 min-w-[1.1rem]">
+          {badge}
+        </span>
+      ) : null}
     </button>
   );
 
@@ -116,6 +124,7 @@ export function CanonBrowser({ storyId }: { storyId: number }) {
         <div className="inline-flex rounded border border-muted/30 overflow-hidden text-xs">
           {tab("search", "Search")}
           {tab("entities", "Entities")}
+          {tab("review", "Review", stats?.pending)}
         </div>
         <button
           className="btn btn-ghost text-xs ml-auto"
@@ -133,12 +142,18 @@ export function CanonBrowser({ storyId }: { storyId: number }) {
         </div>
       )}
 
-      {stats && stats.facts === 0 && (
+      {stats && stats.facts === 0 && mode !== "review" && (
         <div className="card text-center text-muted py-8 text-sm">
           No canon extracted yet for this story. Hit{" "}
           <span className="text-tealBright">Re-extract canon</span> to build it
-          from the bibles + manuscript.
+          from the bibles + manuscript, or use{" "}
+          <span className="text-tealBright">Review</span> to let canon build
+          itself as you write.
         </div>
+      )}
+
+      {mode === "review" && (
+        <CanonReview storyId={storyId} onChanged={loadStats} />
       )}
 
       {mode === "entities" && stats && stats.facts > 0 && (

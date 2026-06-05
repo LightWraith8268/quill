@@ -24,6 +24,14 @@ import {
 import { listMessages, clearMessages } from "./messages.ts";
 import { runChat, runChatRegenerate } from "./chat.ts";
 import { extractStory } from "./knowledge/extract.ts";
+import {
+  proposeFromStory,
+  listPending,
+  pendingCount,
+  acceptPending,
+  rejectPending,
+  clearPending,
+} from "./knowledge/selfbuild.ts";
 import { entityCount, factCount, listGraph, entityFacts } from "./knowledge/store.ts";
 import { retrieveCanon } from "./knowledge/retrieve.ts";
 import { checkContinuity, checkContinuityFile } from "./knowledge/continuity.ts";
@@ -1220,7 +1228,58 @@ export function buildApp(cfg: Config) {
   app.get("/api/stories/:id/kb/stats", (c) => {
     const story = getStory(db, Number(c.req.param("id")));
     const series = story?.series ?? undefined;
-    return c.json({ entities: entityCount(db, series), facts: factCount(db, series) });
+    return c.json({
+      entities: entityCount(db, series),
+      facts: factCount(db, series),
+      pending: pendingCount(db, story?.series ?? null),
+    });
+  });
+
+  // Self-building canon — scan prose (one file via ?path=, or whole story) and
+  // queue candidate facts classified new/contradicts for review.
+  app.post("/api/stories/:id/kb/propose", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isFinite(id)) return c.json({ error: "bad id" }, 400);
+    const body = (await c.req.json().catch(() => ({}))) as { path?: string };
+    try {
+      const result = await proposeFromStory(cfg, db, id, body.path ?? null);
+      return c.json(result);
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
+    }
+  });
+
+  app.get("/api/stories/:id/kb/pending", (c) => {
+    const story = getStory(db, Number(c.req.param("id")));
+    if (!story) return c.json({ error: "story not found" }, 404);
+    return c.json({ pending: listPending(db, story.series) });
+  });
+
+  app.post("/api/stories/:id/kb/pending/:pid/accept", (c) => {
+    const pid = Number(c.req.param("pid"));
+    if (!Number.isFinite(pid)) return c.json({ error: "bad id" }, 400);
+    try {
+      return c.json(acceptPending(db, pid));
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
+    }
+  });
+
+  app.post("/api/stories/:id/kb/pending/:pid/reject", (c) => {
+    const pid = Number(c.req.param("pid"));
+    if (!Number.isFinite(pid)) return c.json({ error: "bad id" }, 400);
+    try {
+      rejectPending(db, pid);
+      return c.json({ ok: true });
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
+    }
+  });
+
+  app.post("/api/stories/:id/kb/pending/clear", (c) => {
+    const story = getStory(db, Number(c.req.param("id")));
+    if (!story) return c.json({ error: "story not found" }, 404);
+    return c.json({ cleared: clearPending(db, story.series) });
   });
 
   // Canon-aware retrieval scoped to a story's series/book.

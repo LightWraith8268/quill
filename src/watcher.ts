@@ -16,12 +16,14 @@
 //    forward-slash to match walk.ts relPath convention.
 
 import { watch, type FSWatcher } from "node:fs";
-import { stat } from "node:fs/promises";
+import { stat, readFile } from "node:fs/promises";
 import { join, sep } from "node:path";
 import type { Config } from "./config.ts";
 import type { DB } from "./db.ts";
 import { reindexPath, deleteFileByPath } from "./reindex.ts";
 import { globToRegExp } from "./walk.ts";
+import { proposeFromText } from "./knowledge/selfbuild.ts";
+import { parseScopePatterns, scopeFromPath } from "./knowledge/scope.ts";
 
 const SKIP_DIRS = [".git", ".obsidian", ".trash", "node_modules"];
 const MD_EXT = /\.(md|markdown)$/i;
@@ -137,4 +139,35 @@ async function handleChange(
     })
   );
   opts.onReindex?.(relPath);
+
+  // Self-building canon: scan the changed prose for new/contradicting facts and
+  // queue them for review. Gated — one LLM call per save. Only files that map to
+  // a series/book scope (i.e. actual manuscript), never bibles-only dirs.
+  if (cfg.QUILL_AUTO_CANON && result.chunksWritten > 0) {
+    const scope = scopeFromPath(relPath, parseScopePatterns(cfg.SCOPE_PATTERNS));
+    if (scope.series || scope.book) {
+      try {
+        const content = await readFile(abs, "utf-8");
+        const proposed = await proposeFromText(cfg, db, {
+          series: scope.series,
+          book: scope.book,
+          sourcePath: relPath,
+          content,
+        });
+        if (proposed.proposed > 0) {
+          console.log(
+            JSON.stringify({ type: "canon_proposed", path: relPath, ...proposed })
+          );
+        }
+      } catch (err) {
+        console.error(
+          JSON.stringify({
+            type: "canon_propose_error",
+            path: relPath,
+            error: err instanceof Error ? err.message : String(err),
+          })
+        );
+      }
+    }
+  }
 }

@@ -58,6 +58,13 @@ const Schema = z.object({
     .string()
     .default("false")
     .transform((v) => v.toLowerCase() === "true"),
+  // Self-building canon: when true, the watcher also scans each changed file for
+  // new/contradicting canon facts and queues them for review (one LLM call per
+  // changed file — off by default to avoid surprise cost). Needs auto-reindex.
+  QUILL_AUTO_CANON: z
+    .string()
+    .default("false")
+    .transform((v) => v.toLowerCase() === "true"),
   WATCH_DEBOUNCE_MS: z.coerce.number().default(500),
 });
 

@@ -323,6 +323,34 @@ function migrate(db: DB, cfg: Config): void {
     CREATE INDEX IF NOT EXISTS idx_kb_appearances_file ON kb_appearances(file_path);
   `);
 
+  // Self-building canon: proposed facts extracted from prose on save, held in a
+  // review queue (NOT in kb_facts) until accepted, so drafts don't pollute
+  // canon. Classified new vs contradicts (with the conflicting fact linked).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS kb_pending_facts (
+      id INTEGER PRIMARY KEY,
+      series TEXT,
+      book TEXT,
+      entity_name TEXT NOT NULL,
+      entity_kind TEXT NOT NULL DEFAULT 'character',
+      claim TEXT NOT NULL,
+      canon_weight TEXT NOT NULL DEFAULT 'draft_text',
+      scope TEXT NOT NULL DEFAULT 'book',
+      classification TEXT NOT NULL DEFAULT 'new'   -- new | contradicts
+        CHECK(classification IN ('new','contradicts')),
+      conflict_fact_id INTEGER,                    -- existing fact it contradicts
+      conflict_claim TEXT,
+      source_path TEXT,
+      source_ref TEXT,
+      status TEXT NOT NULL DEFAULT 'pending'       -- pending | accepted | rejected
+        CHECK(status IN ('pending','accepted','rejected')),
+      created_at INTEGER NOT NULL,
+      decided_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_kb_pending_status ON kb_pending_facts(series, status, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_kb_pending_claim ON kb_pending_facts(LOWER(claim));
+  `);
+
   const existing = db
     .query<{ name: string }, []>(
       "SELECT name FROM sqlite_master WHERE type='table' AND name='vec_chunks'"

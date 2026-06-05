@@ -252,7 +252,20 @@ export const api = {
       body: { text, llm: useLlm },
     }),
   kbStats: (storyId: number) =>
-    req<{ entities: number; facts: number }>(`/stories/${storyId}/kb/stats`),
+    req<{ entities: number; facts: number; pending?: number }>(`/stories/${storyId}/kb/stats`),
+  kbPropose: (storyId: number, path?: string) =>
+    req<{ proposed: number; skipped: number; contradictions: number; model: string | null }>(
+      `/stories/${storyId}/kb/propose`,
+      { method: "POST", body: JSON.stringify(path ? { path } : {}) }
+    ),
+  kbPending: (storyId: number) =>
+    req<{ pending: PendingFact[] }>(`/stories/${storyId}/kb/pending`),
+  kbPendingAccept: (storyId: number, pid: number) =>
+    req<{ factId: number }>(`/stories/${storyId}/kb/pending/${pid}/accept`, { method: "POST" }),
+  kbPendingReject: (storyId: number, pid: number) =>
+    req<{ ok: boolean }>(`/stories/${storyId}/kb/pending/${pid}/reject`, { method: "POST" }),
+  kbPendingClear: (storyId: number) =>
+    req<{ cleared: number }>(`/stories/${storyId}/kb/pending/clear`, { method: "POST" }),
   kbSearch: (storyId: number, q: string, facts = 12, chunks = 6) =>
     req<{ items: CanonItem[] }>(
       `/stories/${storyId}/kb/search?q=${encodeURIComponent(q)}&facts=${facts}&chunks=${chunks}`
@@ -623,6 +636,21 @@ export type GraphFact = {
   canon_weight: CanonWeight;
   source_path: string | null;
   source_ref: string | null;
+};
+export type PendingFact = {
+  id: number;
+  series: string | null;
+  book: string | null;
+  entity_name: string;
+  entity_kind: string;
+  claim: string;
+  canon_weight: CanonWeight;
+  scope: string;
+  classification: "new" | "contradicts";
+  conflict_fact_id: number | null;
+  conflict_claim: string | null;
+  source_path: string | null;
+  created_at: number;
 };
 export type FactHistoryRow = {
   change_type: string;

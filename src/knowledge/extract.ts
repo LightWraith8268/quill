@@ -43,20 +43,20 @@ const ENTITY_KIND_SET = new Set<string>(ENTITY_KINDS);
 const CANON_SET = new Set<string>(CANON_WEIGHTS);
 const SCOPE_SET = new Set<string>(["global", "series", "book", "chapter", "scene"]);
 
-function coerceKind(k?: string): EntityKind {
+export function coerceKind(k?: string): EntityKind {
   const v = (k ?? "").toLowerCase().replace(/\s+/g, "_");
   return (ENTITY_KIND_SET.has(v) ? v : "character") as EntityKind;
 }
-function coerceWeight(w?: string): CanonWeight {
+export function coerceWeight(w?: string): CanonWeight {
   const v = (w ?? "").toLowerCase().replace(/\s+/g, "_");
   return (CANON_SET.has(v) ? v : "soft_canon") as CanonWeight;
 }
-function coerceScope(s?: string): ScopeType {
+export function coerceScope(s?: string): ScopeType {
   const v = (s ?? "").toLowerCase();
   return (SCOPE_SET.has(v) ? v : "series") as ScopeType;
 }
 
-function parseJson(text: string): RawOut | null {
+export function parseJsonLoose<T = unknown>(text: string): T | null {
   let t = text.trim();
   const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (fence?.[1]) t = fence[1].trim();
@@ -66,7 +66,7 @@ function parseJson(text: string): RawOut | null {
     if (i >= 0 && j > i) t = t.slice(i, j + 1);
   }
   try {
-    return JSON.parse(t) as RawOut;
+    return JSON.parse(t) as T;
   } catch {
     return null;
   }
@@ -119,7 +119,7 @@ export async function extractBook(
     },
   });
 
-  const parsed = parseJson(text);
+  const parsed = parseJsonLoose<RawOut>(text);
   if (!parsed) throw new Error("extraction returned unparseable JSON");
 
   const ents = Array.isArray(parsed.entities) ? parsed.entities : [];
