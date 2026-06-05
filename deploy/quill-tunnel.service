@@ -1,0 +1,15 @@
+[Unit]
+Description=Quill Cloudflare tunnel
+After=network-online.target quill-server.service
+Wants=network-online.target quill-server.service
+
+[Service]
+Type=simple
+WorkingDirectory=__QUILL_DIR__
+Environment=PATH=%h/.bun/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=cloudflared tunnel --config __QUILL_DIR__/cloudflared/config.yml run
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

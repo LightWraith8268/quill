@@ -16,6 +16,9 @@ const Schema = z.object({
   EMBED_TPM: z.coerce.number().default(10000),
   EMBED_RETRY_MAX: z.coerce.number().default(6),
   HTTP_PORT: z.coerce.number().default(7878),
+  // Bind address. 127.0.0.1 (default) = localhost only — correct behind a
+  // cloudflared tunnel. Set 0.0.0.0 to expose on the LAN / tailnet directly.
+  HTTP_HOST: z.string().default("127.0.0.1"),
   HTTP_TOKEN: z.string().default(""),
   // Top of the writing tree you can open folders from (defaults to VAULT_PATH).
   WRITING_ROOT: z.string().default(""),

@@ -1448,14 +1448,20 @@ export function buildApp(cfg: Config) {
 export function serve(cfg: Config): void {
   const app = buildApp(cfg);
   const port = cfg.HTTP_PORT;
+  const host = cfg.HTTP_HOST;
   const tokenStatus = cfg.HTTP_TOKEN
     ? "auth: bearer required"
     : "auth: DISABLED (set HTTP_TOKEN to enable)";
+  if (host !== "127.0.0.1" && host !== "localhost" && !cfg.HTTP_TOKEN) {
+    console.warn(
+      `quill: WARNING binding ${host} with no HTTP_TOKEN — the API is exposed unauthenticated.`
+    );
+  }
   Bun.serve({
     port,
-    hostname: "127.0.0.1",
+    hostname: host,
     fetch: app.fetch,
     idleTimeout: 255, // Bun max; chat streams may run minutes
   });
-  console.log(`quill http on http://127.0.0.1:${port}  (${tokenStatus})`);
+  console.log(`quill http on http://${host}:${port}  (${tokenStatus})`);
 }

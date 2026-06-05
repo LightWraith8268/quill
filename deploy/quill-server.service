@@ -1,0 +1,17 @@
+[Unit]
+Description=Quill writing IDE server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=__QUILL_DIR__
+# Bun auto-loads .env from WorkingDirectory. PATH must include bun and the
+# writing `claude` CLI (Quill spawns it for drafting); add its dir if elsewhere.
+Environment=PATH=%h/.bun/bin:%h/.local/bin:%h/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=__BUN__ run __QUILL_DIR__/src/index.ts serve
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target
