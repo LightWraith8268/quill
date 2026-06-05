@@ -26,7 +26,7 @@ import { runChat, runChatRegenerate } from "./chat.ts";
 import { extractStory } from "./knowledge/extract.ts";
 import { entityCount, factCount } from "./knowledge/store.ts";
 import { retrieveCanon } from "./knowledge/retrieve.ts";
-import { checkContinuityFile } from "./knowledge/continuity.ts";
+import { checkContinuity, checkContinuityFile } from "./knowledge/continuity.ts";
 import { alignBeats, pacingReport } from "./knowledge/structure.ts";
 import { createSnapshot, listSnapshots, diffSnapshots } from "./knowledge/history.ts";
 import { openWorkspace } from "./workspace.ts";
@@ -1244,6 +1244,29 @@ export function buildApp(cfg: Config) {
     const useLlm = c.req.query("llm") !== "false";
     try {
       const issues = await checkContinuityFile(cfg, db, { series: story.series, file, useLlm });
+      return c.json({ issues });
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
+    }
+  });
+
+  // Continuity audit of raw text (the editor's unsaved buffer) against canon.
+  app.post("/api/stories/:id/kb/continuity", async (c) => {
+    const story = getStory(db, Number(c.req.param("id")));
+    if (!story) return c.json({ error: "story not found" }, 404);
+    const body = (await c.req.json().catch(() => ({}))) as {
+      text?: unknown;
+      llm?: unknown;
+    };
+    const text = typeof body.text === "string" ? body.text : "";
+    if (!text.trim()) return c.json({ error: "text required" }, 400);
+    const useLlm = body.llm !== false;
+    try {
+      const issues = await checkContinuity(cfg, db, {
+        series: story.series,
+        text,
+        useLlm,
+      });
       return c.json({ issues });
     } catch (e) {
       return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);

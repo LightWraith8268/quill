@@ -274,7 +274,10 @@ export function FileEditor({
     setCheckingContinuity(true);
     setErr(null);
     try {
-      const r = await api.kbContinuity(activeStoryId, path);
+      // While editing, check the live buffer; otherwise the saved file.
+      const r = editing
+        ? await api.kbContinuityText(activeStoryId, dirtyContent)
+        : await api.kbContinuity(activeStoryId, path);
       setContinuity(r.issues);
     } catch (e) {
       setErr((e as Error).message);
@@ -474,11 +477,6 @@ export function FileEditor({
                     close
                   </button>
                 </div>
-                {isDirty && (
-                  <p className="text-[11px] text-muted">
-                    Checked the saved version — save to include unsaved edits.
-                  </p>
-                )}
                 <ul className="space-y-2">
                   {continuity.map((iss, i) => {
                     const border =

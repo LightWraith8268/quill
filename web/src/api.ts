@@ -245,6 +245,11 @@ export const api = {
     req<{ issues: ContinuityIssue[] }>(
       `/stories/${storyId}/kb/continuity?file=${encodeURIComponent(file)}&llm=${useLlm}`
     ),
+  kbContinuityText: (storyId: number, text: string, useLlm = true) =>
+    req<{ issues: ContinuityIssue[] }>(`/stories/${storyId}/kb/continuity`, {
+      method: "POST",
+      body: { text, llm: useLlm },
+    }),
   kbStats: (storyId: number) =>
     req<{ entities: number; facts: number }>(`/stories/${storyId}/kb/stats`),
   kbSearch: (storyId: number, q: string, facts = 12, chunks = 6) =>
