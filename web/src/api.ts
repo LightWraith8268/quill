@@ -256,7 +256,7 @@ export const api = {
   kbPropose: (storyId: number, path?: string) =>
     req<{ proposed: number; skipped: number; contradictions: number; model: string | null }>(
       `/stories/${storyId}/kb/propose`,
-      { method: "POST", body: JSON.stringify(path ? { path } : {}) }
+      { method: "POST", body: path ? { path } : {} }
     ),
   kbPending: (storyId: number) =>
     req<{ pending: PendingFact[] }>(`/stories/${storyId}/kb/pending`),
@@ -277,18 +277,18 @@ export const api = {
   ) =>
     req<{ ok: boolean }>(`/stories/${storyId}/kb/facts/${factId}/bounds`, {
       method: "POST",
-      body: JSON.stringify(bounds),
+      body: bounds,
     }),
   ghost: (precedingText: string, storyId?: number, variant?: number) =>
     req<{ text: string; model: string | null }>(`/edit/ghost`, {
       method: "POST",
-      body: JSON.stringify({ precedingText, storyId, variant }),
+      body: { precedingText, storyId, variant },
     }),
   editPasses: () => req<{ passes: EditorialPassMeta[] }>(`/edit/passes`),
   editPass: (text: string, pass: string, storyId?: number) =>
     req<{ revised: string; pass: string; model: string | null }>(`/edit/pass`, {
       method: "POST",
-      body: JSON.stringify({ text, pass, storyId }),
+      body: { text, pass, storyId },
     }),
   voices: (storyId: number) =>
     req<{ voices: VoiceListItem[] }>(`/stories/${storyId}/voices`),
@@ -299,7 +299,7 @@ export const api = {
   voiceRewrite: (storyId: number, eid: number, text: string) =>
     req<{ rewritten: string; name: string; model: string | null }>(
       `/stories/${storyId}/voices/${eid}/rewrite`,
-      { method: "POST", body: JSON.stringify({ text }) }
+      { method: "POST", body: { text } }
     ),
   kbSearch: (storyId: number, q: string, facts = 12, chunks = 6) =>
     req<{ items: CanonItem[] }>(
@@ -391,9 +391,16 @@ export const api = {
     req<ShareLink>("/share-links", { method: "POST", body }),
   shareLinkDelete: (id: number) =>
     req<{ ok: boolean }>(`/share-links/${id}`, { method: "DELETE" }),
+  submissionMaterialKinds: () =>
+    req<{ kinds: { id: string; label: string; blurb: string }[] }>(`/submission-materials`),
+  submissionMaterial: (storyId: number, kind: string) =>
+    req<{ kind: string; text: string; model: string | null }>(
+      `/stories/${storyId}/submission-material`,
+      { method: "POST", body: { kind } }
+    ),
   compileStory: async (
     storyId: number,
-    format: "md" | "html" | "docx"
+    format: "md" | "html" | "docx" | "epub"
   ): Promise<{ filename: string; bytes: number }> => {
     const t = auth.get();
     const headers: Record<string, string> = {};

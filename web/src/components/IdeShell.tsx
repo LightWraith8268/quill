@@ -28,6 +28,7 @@ import { CanonBrowser } from "./CanonBrowser.tsx";
 import { SnapshotBrowser } from "./SnapshotBrowser.tsx";
 import { CharacterTimeline } from "./CharacterTimeline.tsx";
 import { OutlineView } from "./OutlineView.tsx";
+import { SubmissionPanel } from "./SubmissionPanel.tsx";
 import { StructureBrowser } from "./StructureBrowser.tsx";
 import { StyleBrowser } from "./StyleBrowser.tsx";
 import { StatsPanel } from "./StatsPanel.tsx";
@@ -43,6 +44,7 @@ type CenterView =
   | "outline"
   | "structure"
   | "workflows"
+  | "submit"
   | "styles"
   | "stats";
 type AuxView = Exclude<CenterView, "editor">;
@@ -68,6 +70,7 @@ const VIEW_META: Record<CenterView, { title: string; icon: string; needsStory?: 
   outline: { title: "Outline", icon: "🗺", needsStory: true },
   structure: { title: "Structure", icon: "📐", needsStory: true },
   workflows: { title: "Workflows", icon: "⚙", needsStory: true },
+  submit: { title: "Submit", icon: "📤", needsStory: true },
   styles: { title: "Styles", icon: "✒" },
   stats: { title: "Stats", icon: "📊" },
 };
@@ -81,6 +84,7 @@ const AUX_ORDER: AuxView[] = [
   "outline",
   "structure",
   "workflows",
+  "submit",
   "styles",
   "stats",
 ];
@@ -601,6 +605,8 @@ function AuxBody({
       return <OutlineView storyId={activeStoryId as number} />;
     case "structure":
       return <StructureBrowser storyId={activeStoryId as number} />;
+    case "submit":
+      return <SubmissionPanel storyId={activeStoryId as number} />;
     case "workflows":
       return (
         <WorkflowRunner

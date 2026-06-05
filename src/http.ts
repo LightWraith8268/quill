@@ -67,6 +67,7 @@ import { inlineEditStream, inlineContinueStream, inlineGhost } from "./inline.ts
 import { editorialPass, isEditorialPass, EDITORIAL_PASSES } from "./editorial.ts";
 import { draftBeatStream } from "./beatdraft.ts";
 import { askStoryStream } from "./askstory.ts";
+import { generateMaterial, isMaterialKind, MATERIAL_KINDS } from "./submaterials.ts";
 import {
   listVoices,
   getVoiceProfile,
@@ -963,8 +964,8 @@ export function buildApp(cfg: Config) {
   app.get("/api/stories/:id/compile", async (c) => {
     const id = Number(c.req.param("id"));
     const formatRaw = c.req.query("format") ?? "md";
-    const format = ["md", "html", "docx"].includes(formatRaw)
-      ? (formatRaw as "md" | "html" | "docx")
+    const format = ["md", "html", "docx", "epub"].includes(formatRaw)
+      ? (formatRaw as "md" | "html" | "docx" | "epub")
       : "md";
     try {
       const r = await compileStory(cfg, db, id, format);
@@ -974,6 +975,8 @@ export function buildApp(cfg: Config) {
           ? "text/html; charset=utf-8"
           : format === "docx"
           ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          : format === "epub"
+          ? "application/epub+zip"
           : "text/markdown; charset=utf-8";
       return new Response(buf, {
         headers: {
@@ -1072,6 +1075,31 @@ export function buildApp(cfg: Config) {
   app.get("/api/stories/:id/submissions", (c) => {
     const id = Number(c.req.param("id"));
     return c.json({ submissions: listSubmissions(db, id) });
+  });
+
+  // AI-generated submission materials drawn from canon + outline.
+  app.get("/api/submission-materials", (c) =>
+    c.json({
+      kinds: Object.entries(MATERIAL_KINDS).map(([id, m]) => ({
+        id,
+        label: m.label,
+        blurb: m.blurb,
+      })),
+    })
+  );
+
+  app.post("/api/stories/:id/submission-material", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isFinite(id)) return c.json({ error: "bad id" }, 400);
+    const body = (await c.req.json().catch(() => ({}))) as { kind?: string };
+    if (!body.kind || !isMaterialKind(body.kind)) {
+      return c.json({ error: "valid kind required (logline|blurb|synopsis|query)" }, 400);
+    }
+    try {
+      return c.json(await generateMaterial(cfg, db, id, body.kind));
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
+    }
   });
   app.post("/api/stories/:id/submissions", async (c) => {
     const id = Number(c.req.param("id"));

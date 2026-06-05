@@ -10,7 +10,7 @@ import type { DB } from "./db.ts";
 import { buildReadingPass } from "./reading.ts";
 import { resolveBin } from "./agents/resolve.ts";
 
-export type CompileFormat = "md" | "html" | "docx";
+export type CompileFormat = "md" | "html" | "docx" | "epub";
 
 const HTML_HEAD = `<!doctype html>
 <html lang="en">
@@ -57,12 +57,19 @@ async function pandocAvailable(): Promise<boolean> {
   return true;
 }
 
-async function mdToDocx(md: string, outPath: string): Promise<void> {
+async function mdToPandoc(
+  md: string,
+  outPath: string,
+  to: string,
+  extraArgs: string[] = []
+): Promise<void> {
   const bin = resolveBin("pandoc");
   await new Promise<void>((resolve, reject) => {
-    const child = spawn(bin, ["-f", "markdown", "-t", "docx", "-o", outPath], {
-      stdio: ["pipe", "ignore", "pipe"],
-    });
+    const child = spawn(
+      bin,
+      ["-f", "markdown", "-t", to, "-o", outPath, ...extraArgs],
+      { stdio: ["pipe", "ignore", "pipe"] }
+    );
     let err = "";
     child.stderr?.on("data", (d) => (err += d.toString()));
     child.stdin?.write(md);
@@ -112,16 +119,24 @@ export async function compileStory(
     await writeFile(outAbs, text, "utf-8");
     return { format, filename, size: Buffer.byteLength(text, "utf-8"), outAbs };
   }
-  if (format === "docx") {
+  if (format === "docx" || format === "epub") {
     if (!(await pandocAvailable())) {
       throw new Error(
-        "docx requires pandoc on PATH. Install with: winget install JohnMacFarlane.Pandoc"
+        `${format} requires pandoc on PATH. Install with: winget install JohnMacFarlane.Pandoc`
       );
     }
     const md = partsToMd(reading.parts);
-    const filename = `${slug}-${date}.docx`;
+    const filename = `${slug}-${date}.${format}`;
     const outAbs = join(dir, filename);
-    await mdToDocx(md, outAbs);
+    if (format === "docx") {
+      await mdToPandoc(md, outAbs, "docx");
+    } else {
+      // EPUB: give pandoc a title so the package metadata is valid.
+      await mdToPandoc(md, outAbs, "epub", [
+        "--metadata",
+        `title=${reading.story.name}`,
+      ]);
+    }
     const buf = await readFile(outAbs);
     return { format, filename, size: buf.byteLength, outAbs };
   }
