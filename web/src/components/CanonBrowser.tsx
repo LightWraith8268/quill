@@ -1,10 +1,13 @@
-// Canon browser: the native knowledge layer, surfaced. Shows entity/fact
-// counts, a canon-aware search (facts ranked by relevance then weight, plus
-// scoped manuscript matches), and a re-extract action to (re)build the graph
-// from the story's bibles + manuscript. Scoped to the active story's series.
+// Canon browser: the native knowledge layer, surfaced. Two modes — Search
+// (canon-aware retrieval: facts ranked by relevance then weight, plus scoped
+// manuscript matches) and Entities (the entity graph: relationships, facts,
+// per-fact history). Plus entity/fact counts and a re-extract action to
+// (re)build the graph from the story's bibles + manuscript. Scoped to the
+// active story's series.
 
 import { useEffect, useState, type FormEvent } from "react";
 import { api, type CanonItem, type CanonWeight } from "../api.ts";
+import { EntityBrowser } from "./EntityBrowser.tsx";
 
 const WEIGHT_ORDER: CanonWeight[] = [
   "hard_canon",
@@ -33,6 +36,7 @@ const WEIGHT_TONE: Record<CanonWeight, string> = {
 
 export function CanonBrowser({ storyId }: { storyId: number }) {
   const [stats, setStats] = useState<{ entities: number; facts: number } | null>(null);
+  const [mode, setMode] = useState<"search" | "entities">("search");
   const [q, setQ] = useState("");
   const [items, setItems] = useState<CanonItem[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -76,7 +80,7 @@ export function CanonBrowser({ storyId }: { storyId: number }) {
     try {
       await api.kbExtract(storyId);
       loadStats();
-      if (q.trim()) await search();
+      if (mode === "search" && q.trim()) await search();
     } catch (ex) {
       setErr((ex as Error).message);
     } finally {
@@ -87,6 +91,19 @@ export function CanonBrowser({ storyId }: { storyId: number }) {
   const facts = items?.filter((i) => i.kind !== "chunk") ?? [];
   const chunks = items?.filter((i) => i.kind === "chunk") ?? [];
 
+  const tab = (id: "search" | "entities", label: string) => (
+    <button
+      onClick={() => setMode(id)}
+      className={`px-2 py-1 ${
+        mode === id
+          ? "bg-teal text-paper"
+          : "text-bg dark:text-paper hover:bg-bg/10 dark:hover:bg-muted/10"
+      }`}
+    >
+      {label}
+    </button>
+  );
+
   return (
     <div className="max-w-3xl mx-auto space-y-4">
       <div className="card flex flex-wrap items-center gap-3 text-sm">
@@ -96,6 +113,10 @@ export function CanonBrowser({ storyId }: { storyId: number }) {
             ? `${stats.entities} entit${stats.entities === 1 ? "y" : "ies"} · ${stats.facts} fact${stats.facts === 1 ? "" : "s"}`
             : "loading…"}
         </span>
+        <div className="inline-flex rounded border border-muted/30 overflow-hidden text-xs">
+          {tab("search", "Search")}
+          {tab("entities", "Entities")}
+        </div>
         <button
           className="btn btn-ghost text-xs ml-auto"
           onClick={extract}
@@ -106,29 +127,13 @@ export function CanonBrowser({ storyId }: { storyId: number }) {
         </button>
       </div>
 
-      <form onSubmit={search} className="flex gap-2">
-        <input
-          className="input flex-1"
-          placeholder="Search canon — a character, place, decision, timeline…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
-        <button
-          type="submit"
-          className="btn btn-primary"
-          disabled={busy || !q.trim()}
-        >
-          {busy ? "…" : "Search"}
-        </button>
-      </form>
-
       {err && (
         <div className="bg-red-100 text-red-900 dark:bg-red-900/40 dark:text-red-200 text-sm p-3 rounded">
           {err}
         </div>
       )}
 
-      {stats && stats.facts === 0 && !items && (
+      {stats && stats.facts === 0 && (
         <div className="card text-center text-muted py-8 text-sm">
           No canon extracted yet for this story. Hit{" "}
           <span className="text-tealBright">Re-extract canon</span> to build it
@@ -136,56 +141,84 @@ export function CanonBrowser({ storyId }: { storyId: number }) {
         </div>
       )}
 
-      {items && items.length === 0 && (
-        <p className="text-muted text-sm">No canon matches for “{q}”.</p>
+      {mode === "entities" && stats && stats.facts > 0 && (
+        <EntityBrowser storyId={storyId} />
       )}
 
-      {WEIGHT_ORDER.map((w) => {
-        const group = facts.filter((f) => f.canonWeight === w);
-        if (group.length === 0) return null;
-        return (
-          <div key={w} className="space-y-1">
-            <h3 className={`text-xs uppercase tracking-wide ${WEIGHT_TONE[w]}`}>
-              {WEIGHT_LABEL[w]} · {group.length}
-            </h3>
-            <ul className="space-y-1">
-              {group.map((f, i) => (
-                <li key={i} className="card text-sm py-2">
-                  <div className="flex items-center gap-2">
-                    {f.entity && (
-                      <span className="text-tealBright font-medium">{f.entity}</span>
-                    )}
-                    <span className="text-[10px] uppercase text-muted">{f.kind}</span>
-                    {f.sourcePath && (
-                      <span className="ml-auto text-[11px] text-muted font-mono truncate max-w-[45%]">
-                        {f.sourcePath}
-                        {f.sourceRef ? ` :: ${f.sourceRef}` : ""}
-                      </span>
-                    )}
-                  </div>
-                  <div className="mt-0.5">{f.text}</div>
-                </li>
-              ))}
-            </ul>
-          </div>
-        );
-      })}
+      {mode === "search" && stats && stats.facts > 0 && (
+        <>
+          <form onSubmit={search} className="flex gap-2">
+            <input
+              className="input flex-1"
+              placeholder="Search canon — a character, place, decision, timeline…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={busy || !q.trim()}
+            >
+              {busy ? "…" : "Search"}
+            </button>
+          </form>
 
-      {chunks.length > 0 && (
-        <div className="space-y-1">
-          <h3 className="text-xs uppercase tracking-wide text-muted">
-            Manuscript matches · {chunks.length}
-          </h3>
-          {chunks.map((ch, i) => (
-            <div key={i} className="card text-sm">
-              <div className="text-[11px] text-muted font-mono truncate">
-                {ch.sourcePath}
-                {ch.sourceRef ? ` :: ${ch.sourceRef}` : ""}
+          {items && items.length === 0 && (
+            <p className="text-muted text-sm">No canon matches for “{q}”.</p>
+          )}
+
+          {WEIGHT_ORDER.map((w) => {
+            const group = facts.filter((fact) => fact.canonWeight === w);
+            if (group.length === 0) return null;
+            return (
+              <div key={w} className="space-y-1">
+                <h3 className={`text-xs uppercase tracking-wide ${WEIGHT_TONE[w]}`}>
+                  {WEIGHT_LABEL[w]} · {group.length}
+                </h3>
+                <ul className="space-y-1">
+                  {group.map((fact, i) => (
+                    <li key={i} className="card text-sm py-2">
+                      <div className="flex items-center gap-2">
+                        {fact.entity && (
+                          <span className="text-tealBright font-medium">
+                            {fact.entity}
+                          </span>
+                        )}
+                        <span className="text-[10px] uppercase text-muted">
+                          {fact.kind}
+                        </span>
+                        {fact.sourcePath && (
+                          <span className="ml-auto text-[11px] text-muted font-mono truncate max-w-[45%]">
+                            {fact.sourcePath}
+                            {fact.sourceRef ? ` :: ${fact.sourceRef}` : ""}
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-0.5">{fact.text}</div>
+                    </li>
+                  ))}
+                </ul>
               </div>
-              <div className="mt-1 line-clamp-4 whitespace-pre-wrap">{ch.text}</div>
+            );
+          })}
+
+          {chunks.length > 0 && (
+            <div className="space-y-1">
+              <h3 className="text-xs uppercase tracking-wide text-muted">
+                Manuscript matches · {chunks.length}
+              </h3>
+              {chunks.map((ch, i) => (
+                <div key={i} className="card text-sm">
+                  <div className="text-[11px] text-muted font-mono truncate">
+                    {ch.sourcePath}
+                    {ch.sourceRef ? ` :: ${ch.sourceRef}` : ""}
+                  </div>
+                  <div className="mt-1 line-clamp-4 whitespace-pre-wrap">{ch.text}</div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
     </div>
   );

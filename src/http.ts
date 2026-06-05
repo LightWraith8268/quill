@@ -24,11 +24,11 @@ import {
 import { listMessages, clearMessages } from "./messages.ts";
 import { runChat, runChatRegenerate } from "./chat.ts";
 import { extractStory } from "./knowledge/extract.ts";
-import { entityCount, factCount } from "./knowledge/store.ts";
+import { entityCount, factCount, listGraph, entityFacts } from "./knowledge/store.ts";
 import { retrieveCanon } from "./knowledge/retrieve.ts";
 import { checkContinuity, checkContinuityFile } from "./knowledge/continuity.ts";
 import { alignBeats, pacingReport } from "./knowledge/structure.ts";
-import { createSnapshot, listSnapshots, diffSnapshots } from "./knowledge/history.ts";
+import { createSnapshot, listSnapshots, diffSnapshots, factHistory } from "./knowledge/history.ts";
 import { openWorkspace } from "./workspace.ts";
 import type { AgentSelection } from "./agents/router.ts";
 import { listWorkflows, getWorkflow } from "./workflows.ts";
@@ -1233,6 +1233,31 @@ export function buildApp(cfg: Config) {
       chunkK: Number(c.req.query("chunks") ?? 6),
     });
     return c.json({ items });
+  });
+
+  // Canon graph: entities (+ aliases, fact counts) and their relationship edges.
+  app.get("/api/stories/:id/kb/graph", (c) => {
+    const story = getStory(db, Number(c.req.param("id")));
+    if (!story) return c.json({ error: "story not found" }, 404);
+    return c.json(listGraph(db, story.series));
+  });
+
+  // Facts attached to one entity (with ids, so the UI can open per-fact history).
+  app.get("/api/stories/:id/kb/entities/:eid/facts", (c) => {
+    const story = getStory(db, Number(c.req.param("id")));
+    if (!story) return c.json({ error: "story not found" }, 404);
+    const eid = Number(c.req.param("eid"));
+    if (!Number.isFinite(eid)) return c.json({ error: "bad entity id" }, 400);
+    return c.json({ facts: entityFacts(db, eid) });
+  });
+
+  // A single fact's change log (create / reweight / etc.).
+  app.get("/api/stories/:id/kb/facts/:fid/history", (c) => {
+    const story = getStory(db, Number(c.req.param("id")));
+    if (!story) return c.json({ error: "story not found" }, 404);
+    const fid = Number(c.req.param("fid"));
+    if (!Number.isFinite(fid)) return c.json({ error: "bad fact id" }, 400);
+    return c.json({ history: factHistory(db, fid) });
   });
 
   // Continuity audit of a draft file against the story's series canon.

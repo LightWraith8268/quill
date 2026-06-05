@@ -258,6 +258,18 @@ export const api = {
     ),
   kbExtract: (storyId: number) =>
     req<Record<string, unknown>>(`/stories/${storyId}/kb/extract`, { method: "POST" }),
+  kbGraph: (storyId: number) =>
+    req<{ entities: GraphEntity[]; edges: GraphEdge[] }>(
+      `/stories/${storyId}/kb/graph`
+    ),
+  kbEntityFacts: (storyId: number, entityId: number) =>
+    req<{ facts: GraphFact[] }>(
+      `/stories/${storyId}/kb/entities/${entityId}/facts`
+    ),
+  kbFactHistory: (storyId: number, factId: number) =>
+    req<{ history: FactHistoryRow[] }>(
+      `/stories/${storyId}/kb/facts/${factId}/history`
+    ),
   kbBeats: (storyId: number, template = "save-the-cat") =>
     req<BeatAlignment>(
       `/stories/${storyId}/kb/beats?template=${encodeURIComponent(template)}`
@@ -584,6 +596,41 @@ export type CanonItem = {
   sourcePath: string | null;
   sourceRef: string | null;
   score: number;
+};
+
+export type GraphEntity = {
+  id: number;
+  stable_id: string;
+  kind: string;
+  name: string;
+  aliases: string[];
+  facts: number;
+};
+export type GraphEdge = {
+  src: number;
+  dst: number;
+  srcName: string;
+  dstName: string;
+  relType: string;
+  directed: boolean;
+  description: string | null;
+};
+export type GraphFact = {
+  id: number;
+  claim: string;
+  kind: string;
+  canon_weight: CanonWeight;
+  source_path: string | null;
+  source_ref: string | null;
+};
+export type FactHistoryRow = {
+  change_type: string;
+  prev_claim: string | null;
+  new_claim: string | null;
+  prev_weight: string | null;
+  new_weight: string | null;
+  actor: string | null;
+  at: number;
 };
 
 export type BeatStatus = "present" | "weak" | "missing";

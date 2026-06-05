@@ -303,3 +303,121 @@ export function factCount(db: DB, series?: string | null): number {
       .get(series, series)?.n ?? 0
   );
 }
+
+export type GraphEntity = {
+  id: number;
+  stable_id: string;
+  kind: string;
+  name: string;
+  aliases: string[];
+  facts: number;
+};
+export type GraphEdge = {
+  src: number;
+  dst: number;
+  srcName: string;
+  dstName: string;
+  relType: string;
+  directed: boolean;
+  description: string | null;
+};
+export type GraphFact = {
+  id: number;
+  claim: string;
+  kind: string;
+  canon_weight: string;
+  source_path: string | null;
+  source_ref: string | null;
+};
+
+// The series' entity graph: entities (with aliases + fact counts) and the
+// typed relationship edges between them, names resolved.
+export function listGraph(
+  db: DB,
+  series: string | null
+): { entities: GraphEntity[]; edges: GraphEdge[] } {
+  const ents = db
+    .query<
+      { id: number; stable_id: string; kind: string; name: string },
+      [string | null, string | null]
+    >(
+      "SELECT id, stable_id, kind, name FROM kb_entities WHERE series IS ? OR series = ? ORDER BY name"
+    )
+    .all(series, series);
+
+  const aliasRows = db
+    .query<{ entity_id: number; alias: string }, [string | null, string | null]>(
+      `SELECT a.entity_id, a.alias FROM kb_aliases a
+       JOIN kb_entities e ON e.id = a.entity_id
+       WHERE e.series IS ? OR e.series = ?`
+    )
+    .all(series, series);
+  const aliasMap = new Map<number, string[]>();
+  for (const r of aliasRows) {
+    const list = aliasMap.get(r.entity_id) ?? [];
+    list.push(r.alias);
+    aliasMap.set(r.entity_id, list);
+  }
+
+  const factRows = db
+    .query<{ entity_id: number; n: number }, [string | null, string | null]>(
+      `SELECT entity_id, COUNT(*) AS n FROM kb_facts
+       WHERE (series IS ? OR series = ?) AND entity_id IS NOT NULL
+       GROUP BY entity_id`
+    )
+    .all(series, series);
+  const factMap = new Map<number, number>();
+  for (const r of factRows) factMap.set(r.entity_id, r.n);
+
+  const entities: GraphEntity[] = ents.map((e) => ({
+    id: e.id,
+    stable_id: e.stable_id,
+    kind: e.kind,
+    name: e.name,
+    aliases: aliasMap.get(e.id) ?? [],
+    facts: factMap.get(e.id) ?? 0,
+  }));
+
+  const edgeRows = db
+    .query<
+      {
+        src: number;
+        dst: number;
+        srcName: string;
+        dstName: string;
+        rel_type: string;
+        directed: number;
+        description: string | null;
+      },
+      [string | null, string | null]
+    >(
+      `SELECT ed.src_entity_id AS src, ed.dst_entity_id AS dst,
+              s.name AS srcName, d.name AS dstName,
+              ed.rel_type, ed.directed, ed.description
+       FROM kb_edges ed
+       JOIN kb_entities s ON s.id = ed.src_entity_id
+       JOIN kb_entities d ON d.id = ed.dst_entity_id
+       WHERE s.series IS ? OR s.series = ?`
+    )
+    .all(series, series);
+  const edges: GraphEdge[] = edgeRows.map((r) => ({
+    src: r.src,
+    dst: r.dst,
+    srcName: r.srcName,
+    dstName: r.dstName,
+    relType: r.rel_type,
+    directed: r.directed === 1,
+    description: r.description,
+  }));
+
+  return { entities, edges };
+}
+
+export function entityFacts(db: DB, entityId: number): GraphFact[] {
+  return db
+    .query<GraphFact, [number]>(
+      `SELECT id, claim, kind, canon_weight, source_path, source_ref
+       FROM kb_facts WHERE entity_id = ? ORDER BY id`
+    )
+    .all(entityId);
+}
