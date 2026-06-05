@@ -46,7 +46,8 @@ Full steps in `cloudflared/README.md`. Short:
 - status: `systemctl --user status quill-server quill-tunnel`
 - logs: `journalctl --user -u quill-server -f`
 - stop: `systemctl --user stop quill-server quill-tunnel`
-- **deploy new code:** pull/copy → re-run `bash deploy/setup.sh` (rebuilds web, restarts server). Web-only change: `cd ~/quill/web && bun run build` (dist serves per-request — no restart). Server code change: `systemctl --user restart quill-server`.
+- **update (easy):** `bash ~/quill/deploy/update.sh` — pulls (git) or re-syncs from `P:\Quill`, rebuilds web, restarts. One command. (First copy new code to `P:\Quill`, or `git pull` if `~/quill` is a clone.)
+- web-only change: `cd ~/quill/web && bun run build` (dist serves per-request — no restart). Server code change only: `systemctl --user restart quill-server`.
 
 ## Notes
 
