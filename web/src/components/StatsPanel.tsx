@@ -8,7 +8,7 @@ type ProbeResult = { ok: boolean; latencyMs: number; error?: string };
 type DbProbe = { ok: boolean; sizeBytes: number; error?: string };
 type VaultProbe = { ok: boolean; path: string; fileCount: number; error?: string };
 type HealthReport = {
-  voyage: ProbeResult;
+  embeddings: ProbeResult & { provider: string; model: string };
   claude: ProbeResult;
   codex: ProbeResult;
   gemini: ProbeResult;
@@ -182,7 +182,10 @@ function HealthCard() {
           {err && <div className="text-sm text-red-700 dark:text-red-300">{err}</div>}
           {report ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <ProbeBadge name="Voyage" probe={report.voyage} />
+              <ProbeBadge
+                name={`Embeddings · ${report.embeddings.provider}/${report.embeddings.model}`}
+                probe={report.embeddings}
+              />
               <ProbeBadge name="Claude CLI" probe={report.claude} />
               <ProbeBadge name="Codex CLI" probe={report.codex} />
               <ProbeBadge name="Gemini CLI" probe={report.gemini} />

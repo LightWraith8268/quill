@@ -10,6 +10,7 @@ import { resolveBin } from "./agents/resolve.ts";
 import { logError } from "./errlog.ts";
 
 export type ProbeResult = { ok: boolean; latencyMs: number; error?: string };
+export type EmbedProbe = ProbeResult & { provider: string; model: string };
 export type DbProbe = { ok: boolean; sizeBytes: number; error?: string };
 export type VaultProbe = {
   ok: boolean;
@@ -19,7 +20,7 @@ export type VaultProbe = {
 };
 
 export type HealthReport = {
-  voyage: ProbeResult;
+  embeddings: EmbedProbe;
   claude: ProbeResult;
   codex: ProbeResult;
   gemini: ProbeResult;
@@ -36,6 +37,49 @@ function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
     p,
     new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
   ]);
+}
+
+// Probe the embedding backend: a local Ollama server (reachable + model
+// pulled) or the Voyage API, depending on EMBED_PROVIDER.
+async function checkEmbeddings(cfg: Config): Promise<EmbedProbe> {
+  if (cfg.EMBED_PROVIDER === "ollama") {
+    const start = Date.now();
+    const base = { provider: "ollama", model: cfg.EMBED_MODEL };
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), HTTP_TIMEOUT_MS);
+    try {
+      const res = await fetch(`${cfg.OLLAMA_URL.replace(/\/$/, "")}/api/tags`, {
+        signal: ctrl.signal,
+      });
+      const latencyMs = Date.now() - start;
+      if (!res.ok) return { ok: false, latencyMs, error: `ollama ${res.status}`, ...base };
+      const json = (await res.json()) as { models?: { name: string }[] };
+      const names = (json.models ?? []).map((m) => m.name);
+      const present = names.some(
+        (n) => n === cfg.EMBED_MODEL || n.split(":")[0] === cfg.EMBED_MODEL
+      );
+      if (!present) {
+        return {
+          ok: false,
+          latencyMs,
+          error: `model "${cfg.EMBED_MODEL}" not pulled (have: ${names.slice(0, 4).join(", ") || "none"})`,
+          ...base,
+        };
+      }
+      return { ok: true, latencyMs, ...base };
+    } catch (e) {
+      return {
+        ok: false,
+        latencyMs: Date.now() - start,
+        error: e instanceof Error ? e.message : String(e),
+        ...base,
+      };
+    } finally {
+      clearTimeout(t);
+    }
+  }
+  const v = await checkVoyage(cfg);
+  return { ...v, provider: "voyage", model: cfg.EMBED_MODEL };
 }
 
 async function checkVoyage(cfg: Config): Promise<ProbeResult> {
@@ -181,7 +225,13 @@ async function countMd(root: string, cap: number): Promise<number> {
 
 export async function checkHealth(cfg: Config): Promise<HealthReport> {
   const fallback: HealthReport = {
-    voyage: { ok: false, latencyMs: 0, error: "timeout" },
+    embeddings: {
+      ok: false,
+      latencyMs: 0,
+      error: "timeout",
+      provider: cfg.EMBED_PROVIDER,
+      model: cfg.EMBED_MODEL,
+    },
     claude: { ok: false, latencyMs: 0, error: "timeout" },
     codex: { ok: false, latencyMs: 0, error: "timeout" },
     gemini: { ok: false, latencyMs: 0, error: "timeout" },
@@ -190,10 +240,16 @@ export async function checkHealth(cfg: Config): Promise<HealthReport> {
   };
 
   const work = (async (): Promise<HealthReport> => {
-    const [voyage, claude, codex, gemini, vault] = await Promise.all([
-      checkVoyage(cfg).catch((e) => {
-        logError("health.voyage", e);
-        return { ok: false, latencyMs: 0, error: String(e) } as ProbeResult;
+    const [embeddings, claude, codex, gemini, vault] = await Promise.all([
+      checkEmbeddings(cfg).catch((e) => {
+        logError("health.embeddings", e);
+        return {
+          ok: false,
+          latencyMs: 0,
+          error: String(e),
+          provider: cfg.EMBED_PROVIDER,
+          model: cfg.EMBED_MODEL,
+        } as EmbedProbe;
       }),
       checkCli("claude").catch((e) => {
         logError("health.claude", e);
@@ -218,7 +274,7 @@ export async function checkHealth(cfg: Config): Promise<HealthReport> {
       }),
     ]);
     const db = checkDb(cfg);
-    return { voyage, claude, codex, gemini, db, vault };
+    return { embeddings, claude, codex, gemini, db, vault };
   })();
 
   return withTimeout(work, OVERALL_TIMEOUT_MS, fallback);
