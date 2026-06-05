@@ -142,7 +142,15 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function M
 
     const view = new EditorView({ state, parent: hostRef.current });
     viewRef.current = view;
+    // When the host transitions from hidden (0×0 — e.g. its IDE pane was
+    // display:none) back to visible, CodeMirror's cached geometry is stale.
+    // Force a re-measure on size changes so layout and scrolling stay correct.
+    const ro = new ResizeObserver(() => {
+      if (hostRef.current && hostRef.current.clientWidth > 0) view.requestMeasure();
+    });
+    ro.observe(hostRef.current);
     return () => {
+      ro.disconnect();
       view.destroy();
       viewRef.current = null;
     };
