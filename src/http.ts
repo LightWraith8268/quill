@@ -130,6 +130,7 @@ const StoryPatchBody = z.object({
 const ChatBody = z.object({
   message: z.string().min(1),
   agent: z.enum(["claude", "codex", "gemini", "auto"]).default("auto"),
+  mode: z.enum(["chat", "agent"]).default("chat"),
 });
 
 const RegenerateBody = z.object({
@@ -1170,7 +1171,7 @@ export function buildApp(cfg: Config) {
     const parsed = ChatBody.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return c.json({ error: "bad request", issues: parsed.error.flatten() }, 400);
 
-    const { message, agent } = parsed.data;
+    const { message, agent, mode } = parsed.data;
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
         const enc = new TextEncoder();
@@ -1184,6 +1185,7 @@ export function buildApp(cfg: Config) {
             storyId: id,
             message,
             agent: agent as AgentSelection,
+            mode,
           })) {
             send(ev.type, ev);
           }

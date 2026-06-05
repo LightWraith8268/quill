@@ -832,12 +832,15 @@ async function* parseSse(
   }
 }
 
+export type ChatMode = "chat" | "agent";
+
 export async function* chatStream(
   storyId: number,
   message: string,
-  agent: AgentSelection
+  agent: AgentSelection,
+  mode: ChatMode = "chat"
 ): AsyncGenerator<{ event: string; data: unknown }, void, void> {
-  const reader = await openSse(`/api/stories/${storyId}/chat`, { message, agent });
+  const reader = await openSse(`/api/stories/${storyId}/chat`, { message, agent, mode });
   yield* parseSse(reader);
 }
 

@@ -26,6 +26,15 @@ import { makeRecorder } from "./usage.ts";
 
 const HISTORY_TURNS = 12;
 const LORE_HITS = 5;
+
+// Appended to the system prompt in agent mode so Claude knows it may act on the
+// vault directly (it has Read/Write/Edit/Grep/Glob/Bash in the story folder).
+const AGENT_MODE_INSTRUCTIONS = [
+  `=== AGENT MODE ===`,
+  `You can directly read, search, and edit files in this story folder using your tools — you are not limited to the context above. Prefer reading the actual files when you need specifics.`,
+  `When the user asks you to write or revise prose, edit the relevant manuscript file in place (Edit/Write) rather than only printing the text in chat. After editing, briefly summarize what you changed and where.`,
+  `Stay inside this story folder. Do not run destructive shell commands. Keep manuscript files clean markdown — no code fences around prose.`,
+].join("\n");
 const CANON_FACTS = 8;
 const STYLE_LORE_PREVIEW_CHARS = 600;
 const ACTIVE_SCENE_LARGE_BYTES = 30 * 1024;
@@ -68,15 +77,43 @@ async function findRecentScene(
 
 export type { AgentName } from "./agents/router.ts";
 
+// Compact human label for a tool call, shown as a chip in the chat UI.
+function toolDetailFor(name: string, input: unknown): string | undefined {
+  const i = (input ?? {}) as Record<string, unknown>;
+  const base = (p: unknown): string | undefined =>
+    typeof p === "string" ? p.split(/[\\/]/).pop() : undefined;
+  switch (name) {
+    case "Read":
+    case "Write":
+    case "Edit":
+    case "NotebookEdit":
+      return base(i.file_path ?? i.notebook_path);
+    case "Grep":
+      return typeof i.pattern === "string" ? `/${i.pattern}/` : undefined;
+    case "Glob":
+      return typeof i.pattern === "string" ? i.pattern : undefined;
+    case "Bash":
+      return typeof i.command === "string" ? i.command.slice(0, 60) : undefined;
+    default:
+      return undefined;
+  }
+}
+
 export type ChatRequest = {
   storyId: number;
   message: string;
   agent: AgentSelection;
+  // "agent" = let Claude read/write/edit/search the vault (bypassPermissions,
+  // sandboxed to the story folder). "chat" (default) = advisory, no tools.
+  mode?: "chat" | "agent";
 };
+
+export type ToolUse = { name: string; ok: boolean; detail?: string };
 
 export type ChatStreamEvent =
   | { type: "context"; usage: ContextUsage; agent: AgentName; routeReason: string }
   | { type: "delta"; text: string }
+  | { type: "tool"; phase: "start" | "end"; id: string; name?: string; detail?: string; ok?: boolean }
   | { type: "done"; assistantId: number }
   | { type: "error"; error: string };
 
@@ -87,6 +124,7 @@ export type ContextUsage = {
   canonFacts?: number;
   historyTurns: number;
   activeScene?: { path: string; bytes: number; source: "pinned" | "auto-mtime" } | null;
+  tools?: ToolUse[]; // agent-mode vault actions taken this turn
 };
 
 export async function* runChat(
@@ -113,37 +151,66 @@ export async function* runChat(
   const built = await buildContext(cfg, db, story, history, req.message);
   const contextMs = Date.now() - t0;
   // Note: buildContext already recorded embed+rerank usage internally.
-  const route = pickAgent(req.agent, req.message);
+  // Agent mode needs the tool-capable agent (Claude), so pin it there.
+  const isAgent = req.mode === "agent";
+  const route = isAgent
+    ? { agent: "claude" as AgentName, reason: "agent mode → Claude (vault tools)" }
+    : pickAgent(req.agent, req.message);
   yield { type: "context", usage: built.usage, agent: route.agent, routeReason: route.reason };
 
-  const systemPrompt = built.systemPrompt;
+  const systemPrompt = isAgent
+    ? built.systemPrompt + "\n\n" + AGENT_MODE_INSTRUCTIONS
+    : built.systemPrompt;
   const userPrompt = req.message;
 
   const agentRecorder = makeRecorder(db, route.agent, story.id);
+
+  // Bridge claude.ts onToolCall (sync callback) → generator yields. Tool events
+  // fire between text chunks; queue them and drain on each iteration.
+  const toolQueue: ChatStreamEvent[] = [];
+  const toolDetail = new Map<string, { name: string; detail?: string }>();
+  const tools: ToolUse[] = [];
 
   let full = "";
   let ttftMs = 0;
   const tStream = Date.now();
   try {
-    for await (const chunk of streamFor(route.agent, userPrompt, {
+    const stream = streamFor(route.agent, userPrompt, {
       systemPrompt,
       cwd: storyCwd(cfg, story),
+      agentic: isAgent,
+      onToolCall: (e) => {
+        if (e.phase === "start") {
+          const detail = toolDetailFor(e.name, e.input);
+          toolDetail.set(e.id, { name: e.name, detail });
+          toolQueue.push({ type: "tool", phase: "start", id: e.id, name: e.name, detail });
+        } else {
+          const meta = toolDetail.get(e.id);
+          tools.push({ name: meta?.name ?? "tool", ok: e.ok, detail: meta?.detail });
+          toolQueue.push({ type: "tool", phase: "end", id: e.id, ok: e.ok });
+        }
+      },
       onUsage: (u) => agentRecorder({
         inputTokens: u.inputTokens,
         outputTokens: u.outputTokens,
         cachedInputTokens: u.cachedInputTokens,
         model: u.model,
       }),
-    })) {
+    });
+    for await (const chunk of stream) {
+      while (toolQueue.length) yield toolQueue.shift()!;
       if (ttftMs === 0) ttftMs = Date.now() - tStream;
       full += chunk;
       yield { type: "delta", text: chunk };
     }
+    while (toolQueue.length) yield toolQueue.shift()!;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     yield { type: "error", error: msg };
     return;
   }
+
+  if (tools.length) built.usage.tools = tools;
 
   const assistant = appendMessage(db, {
     storyId: story.id,

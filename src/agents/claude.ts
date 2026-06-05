@@ -8,6 +8,11 @@ export type AgentUsage = {
   model?: string | null;
 };
 
+// Surfaced to the UI so a chat turn can show what the agent did to the vault.
+export type AgentToolEvent =
+  | { phase: "start"; id: string; name: string; input: unknown }
+  | { phase: "end"; id: string; ok: boolean };
+
 export type ClaudeOpts = {
   systemPrompt?: string;
   cwd?: string;
@@ -19,6 +24,11 @@ export type ClaudeOpts = {
   // Skip loading MCP servers (--strict-mcp-config with no --mcp-config = none).
   // Cuts spawn latency for chat. Defaults from CLAUDE_SKIP_MCP env (default on).
   skipMcp?: boolean;
+  // Agentic mode: bypass permissions so the spawned CLI can Read/Write/Edit/
+  // Grep/Glob/Bash inside cwd headlessly (the story folder sandboxes it). When
+  // false (default), no permission flag is passed — chat stays fast + advisory.
+  agentic?: boolean;
+  onToolCall?: (e: AgentToolEvent) => void;
   onUsage?: (u: AgentUsage) => void;
 };
 
@@ -32,7 +42,15 @@ type StreamEvent = {
   type?: string;
   subtype?: string;
   message?: {
-    content?: { type: string; text?: string }[];
+    content?: {
+      type: string;
+      text?: string;
+      id?: string; // tool_use
+      name?: string; // tool_use
+      input?: unknown; // tool_use
+      tool_use_id?: string; // tool_result
+      is_error?: boolean; // tool_result
+    }[];
     model?: string;
     usage?: {
       input_tokens?: number;
@@ -68,6 +86,9 @@ export async function* claudeStream(
   const skipMcp = opts.skipMcp ?? ENV_SKIP_MCP;
   if (model) args.push("--model", model);
   if (skipMcp) args.push("--strict-mcp-config");
+  // Agent mode: let tools run without prompts (cwd is the sandbox). Without
+  // this, headless tool calls would be denied and writing wouldn't happen.
+  if (opts.agentic) args.push("--permission-mode", "bypassPermissions");
   const composed = opts.systemPrompt
     ? `${opts.systemPrompt}\n\n=== USER MESSAGE ===\n${prompt}`
     : prompt;
@@ -103,6 +124,18 @@ export async function* claudeStream(
 
     const u = usageFrom(json);
     if (u) finalUsage = u;
+
+    // Tool activity comes on full (non-partial) assistant/user message lines:
+    // assistant → tool_use blocks (start), user → tool_result blocks (end).
+    if (opts.onToolCall && Array.isArray(json.message?.content)) {
+      for (const b of json.message.content) {
+        if (b.type === "tool_use" && b.id && b.name) {
+          opts.onToolCall({ phase: "start", id: b.id, name: b.name, input: b.input });
+        } else if (b.type === "tool_result" && b.tool_use_id) {
+          opts.onToolCall({ phase: "end", id: b.tool_use_id, ok: b.is_error !== true });
+        }
+      }
+    }
 
     // Token-by-token partial delta (needs --include-partial-messages).
     if (

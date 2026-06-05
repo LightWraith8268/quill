@@ -8,6 +8,7 @@ import {
   regenerateStream,
   type AgentName,
   type AgentSelection,
+  type ChatMode,
   type ChatMessage,
   type Story,
   type UsageResponse,
@@ -31,13 +32,18 @@ type ContextUsage = {
   canonFacts?: number;
   historyTurns: number;
   activeScene?: { path: string; bytes: number; source: "pinned" | "auto-mtime" } | null;
+  tools?: { name: string; ok: boolean; detail?: string }[];
 };
+
+type ToolChip = { id: string; name: string; detail?: string; done: boolean; ok?: boolean };
 
 export function ChatPanel({ storyId }: Props) {
   const [story, setStory] = useState<Story | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [agent, setAgent] = useState<AgentSelection>("auto");
+  const [mode, setMode] = useState<ChatMode>("chat");
+  const [streamTools, setStreamTools] = useState<ToolChip[]>([]);
   const [busy, setBusy] = useState(false);
   const [streamText, setStreamText] = useState("");
   const [lastContext, setLastContext] = useState<ContextUsage | null>(null);
@@ -92,6 +98,7 @@ export function ChatPanel({ storyId }: Props) {
     setBusy(true);
     setErr(null);
     setStreamText("");
+    setStreamTools([]);
     setLastContext(null);
     setRoutedAgent(null);
     setRouteReason(null);
@@ -112,7 +119,7 @@ export function ChatPanel({ storyId }: Props) {
 
     try {
       let buffered = "";
-      for await (const ev of chatStream(storyId, text, agent)) {
+      for await (const ev of chatStream(storyId, text, agent, mode)) {
         if (ev.event === "context") {
           const data = ev.data as {
             usage: ContextUsage;
@@ -126,6 +133,19 @@ export function ChatPanel({ storyId }: Props) {
           const data = ev.data as { text: string };
           buffered += data.text;
           setStreamText(buffered);
+        } else if (ev.event === "tool") {
+          const d = ev.data as {
+            phase: "start" | "end";
+            id: string;
+            name?: string;
+            detail?: string;
+            ok?: boolean;
+          };
+          setStreamTools((cur) =>
+            d.phase === "start"
+              ? [...cur, { id: d.id, name: d.name ?? "tool", detail: d.detail, done: false }]
+              : cur.map((t) => (t.id === d.id ? { ...t, done: true, ok: d.ok } : t))
+          );
         } else if (ev.event === "done") {
           // Refetch to get the final assistant row
           const r = await api.storyMessages(storyId);
@@ -234,6 +254,7 @@ export function ChatPanel({ storyId }: Props) {
             onInsert={() => setInsertingFromId(m.id)}
           />
         ))}
+        {streamTools.length > 0 && <ToolStrip tools={streamTools} />}
         {streamText && (
           <MessageBubble
             m={{
@@ -344,10 +365,30 @@ export function ChatPanel({ storyId }: Props) {
       <div className="card">
         {storyId && <PinnedContext storyId={storyId} />}
         <div className="flex flex-wrap items-center gap-2 mb-2">
+          <div className="flex rounded-md border border-muted/30 overflow-hidden text-xs">
+            <button
+              type="button"
+              onClick={() => setMode("chat")}
+              className={`px-3 py-1.5 ${mode === "chat" ? "bg-teal text-paper" : "text-muted hover:text-tealBright"}`}
+              title="Advisory — Claude answers in chat, no file changes"
+            >
+              Chat
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("agent")}
+              className={`px-3 py-1.5 ${mode === "agent" ? "bg-teal text-paper" : "text-muted hover:text-tealBright"}`}
+              title="Agent — Claude can read/search/edit files in this story folder"
+            >
+              ⚡ Agent
+            </button>
+          </div>
           <select
             className="input flex-1 min-w-0"
             value={agent}
             onChange={(e) => setAgent(e.target.value as AgentSelection)}
+            disabled={mode === "agent"}
+            title={mode === "agent" ? "Agent mode always uses Claude (the tool-capable agent)" : undefined}
           >
             <option value="auto">Auto-route (smart pick)</option>
             <option value="claude">Claude — drafting / voice</option>
@@ -358,6 +399,12 @@ export function ChatPanel({ storyId }: Props) {
             Clear chat
           </button>
         </div>
+        {mode === "agent" && (
+          <p className="text-xs text-tealBright/80 mb-2">
+            ⚡ Agent mode: Claude can read, search, and <span className="font-medium">edit files</span> in
+            this story folder. Changes are written to disk.
+          </p>
+        )}
         <textarea
           className="input w-full font-ui resize-none"
           rows={3}
@@ -432,6 +479,42 @@ export function ChatPanel({ storyId }: Props) {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+const TOOL_ICON: Record<string, string> = {
+  Read: "📖",
+  Write: "✍️",
+  Edit: "✏️",
+  NotebookEdit: "✏️",
+  Grep: "🔍",
+  Glob: "📁",
+  Bash: "⌘",
+};
+
+function ToolStrip({ tools }: { tools: ToolChip[] }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {tools.map((t) => (
+        <span
+          key={t.id}
+          className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-mono ${
+            !t.done
+              ? "border-tealBright/50 text-tealBright animate-pulse"
+              : t.ok === false
+                ? "border-red-400/50 text-red-400"
+                : "border-muted/30 text-muted"
+          }`}
+          title={t.detail ? `${t.name} ${t.detail}` : t.name}
+        >
+          <span>{TOOL_ICON[t.name] ?? "🔧"}</span>
+          <span>{t.name}</span>
+          {t.detail && <span className="opacity-70 max-w-[14rem] truncate">{t.detail}</span>}
+          {!t.done && <span className="opacity-60">…</span>}
+          {t.done && t.ok === false && <span>✗</span>}
+        </span>
+      ))}
     </div>
   );
 }
