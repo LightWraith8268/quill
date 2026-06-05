@@ -188,7 +188,7 @@ export async function* runEnsemble(
             }),
         }
       )) {
-        yield { type: "synthesis_delta", text: chunk };
+        if (typeof chunk === "string") yield { type: "synthesis_delta", text: chunk };
       }
     } catch (e) {
       yield { type: "synthesis_delta", text: `\n\n[synthesis error: ${e instanceof Error ? e.message : String(e)}]` };

@@ -113,6 +113,7 @@ export type ToolUse = { name: string; ok: boolean; detail?: string };
 export type ChatStreamEvent =
   | { type: "context"; usage: ContextUsage; agent: AgentName; routeReason: string }
   | { type: "delta"; text: string }
+  | { type: "thinking"; text: string }
   | { type: "tool"; phase: "start" | "end"; id: string; name?: string; detail?: string; ok?: boolean }
   | { type: "done"; assistantId: number }
   | { type: "error"; error: string };
@@ -165,29 +166,34 @@ export async function* runChat(
 
   const agentRecorder = makeRecorder(db, route.agent, story.id);
 
-  // Bridge claude.ts onToolCall (sync callback) → generator yields. Tool events
-  // fire between text chunks; queue them and drain on each iteration.
-  const toolQueue: ChatStreamEvent[] = [];
+  // Bridge claude.ts sync callbacks (tool + thinking) → generator yields. They
+  // fire between text chunks; queue them and drain on each iteration so the UI
+  // shows activity (and thinking) during the wait before the first prose token.
+  const pending: ChatStreamEvent[] = [];
   const toolDetail = new Map<string, { name: string; detail?: string }>();
   const tools: ToolUse[] = [];
 
   let full = "";
   let ttftMs = 0;
+  let thinkMs = 0;
   const tStream = Date.now();
   try {
     const stream = streamFor(route.agent, userPrompt, {
       systemPrompt,
       cwd: storyCwd(cfg, story),
       agentic: isAgent,
+      // Tool events are sync callbacks; queue and drain interleaved with the
+      // stream so chips appear in order. Thinking comes through the stream
+      // itself (below), so it streams live during the pre-prose wait.
       onToolCall: (e) => {
         if (e.phase === "start") {
           const detail = toolDetailFor(e.name, e.input);
           toolDetail.set(e.id, { name: e.name, detail });
-          toolQueue.push({ type: "tool", phase: "start", id: e.id, name: e.name, detail });
+          pending.push({ type: "tool", phase: "start", id: e.id, name: e.name, detail });
         } else {
           const meta = toolDetail.get(e.id);
           tools.push({ name: meta?.name ?? "tool", ok: e.ok, detail: meta?.detail });
-          toolQueue.push({ type: "tool", phase: "end", id: e.id, ok: e.ok });
+          pending.push({ type: "tool", phase: "end", id: e.id, ok: e.ok });
         }
       },
       onUsage: (u) => agentRecorder({
@@ -198,12 +204,17 @@ export async function* runChat(
       }),
     });
     for await (const chunk of stream) {
-      while (toolQueue.length) yield toolQueue.shift()!;
+      while (pending.length) yield pending.shift()!;
+      if (typeof chunk !== "string") {
+        if (thinkMs === 0) thinkMs = Date.now() - tStream;
+        yield { type: "thinking", text: chunk.thinking };
+        continue;
+      }
       if (ttftMs === 0) ttftMs = Date.now() - tStream;
       full += chunk;
       yield { type: "delta", text: chunk };
     }
-    while (toolQueue.length) yield toolQueue.shift()!;
+    while (pending.length) yield pending.shift()!;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     yield { type: "error", error: msg };
@@ -224,6 +235,7 @@ export async function* runChat(
       type: "chat_timing",
       agent: route.agent,
       contextMs,
+      thinkMs,
       ttftMs,
       totalMs: Date.now() - t0,
       chars: full.length,
@@ -320,6 +332,10 @@ export async function* runChatRegenerate(
           model: u.model,
         }),
     })) {
+      if (typeof chunk !== "string") {
+        yield { type: "thinking", text: chunk.thinking };
+        continue;
+      }
       full += chunk;
       yield { type: "delta", text: chunk };
     }

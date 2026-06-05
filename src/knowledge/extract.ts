@@ -114,6 +114,8 @@ export async function extractBook(
   let model: string | null = null;
   const text = await claudeOnce(prompt, {
     cwd: cfg.VAULT_PATH,
+    skipMcp: true,
+    model: cfg.CLAUDE_FAST_MODEL || undefined,
     onUsage: (u) => {
       model = u.model ?? model;
     },

@@ -41,9 +41,18 @@ const Schema = z.object({
   // creds) instead of ~/.claude — e.g. a writing-tuned profile. Inherited by the
   // spawned Claude CLI via the process env.
   CLAUDE_CONFIG_DIR: z.string().default(""),
-  // Force the chat/inline Claude model — e.g. claude-sonnet-4-6 for faster
-  // first-token than Opus. "" = let the CLI pick (its configured default).
+  // GLOBAL model override for EVERY Claude call (prose included). Leave EMPTY
+  // to keep the CLI's default model for prose — e.g. Opus 4.8 — which is what
+  // you want for actual writing. Only set this if you deliberately want one
+  // model everywhere. To speed up the cheap/utility paths WITHOUT touching
+  // prose quality, use CLAUDE_FAST_MODEL instead.
   CLAUDE_MODEL: z.string().default(""),
+  // Optional faster model used ONLY for non-prose utility paths: ambient
+  // ghost-text, canon extraction, self-canon proposal, ask-your-story,
+  // submission materials, and voice-profile analysis. Prose paths (chat,
+  // draft-this-beat, editorial passes, voice rewrite, inline rewrite/continue)
+  // ignore this and stay on the prose model. "" = same model as everything else.
+  CLAUDE_FAST_MODEL: z.string().default(""),
   // Skip MCP server loading for spawned Claude (cuts spawn latency a lot).
   // Default true — chat/inline don't need MCP. Read by agents/claude.ts.
   CLAUDE_SKIP_MCP: z

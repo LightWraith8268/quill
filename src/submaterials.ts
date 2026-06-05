@@ -110,6 +110,7 @@ export async function generateMaterial(
     systemPrompt,
     cwd: cfg.VAULT_PATH,
     skipMcp: true,
+    model: cfg.CLAUDE_FAST_MODEL || undefined,
     onUsage: (u) => {
       model = u.model ?? model;
       recorder({

@@ -135,6 +135,7 @@ export async function buildVoiceProfile(
   const text = await claudeOnce(`${PROFILE_SYS}\n\n=== MATERIAL ===\n${material}`, {
     cwd: cfg.VAULT_PATH,
     skipMcp: true,
+    model: cfg.CLAUDE_FAST_MODEL || undefined,
     onUsage: (u) =>
       recorder({
         inputTokens: u.inputTokens,

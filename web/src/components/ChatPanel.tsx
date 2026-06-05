@@ -44,6 +44,7 @@ export function ChatPanel({ storyId }: Props) {
   const [agent, setAgent] = useState<AgentSelection>("auto");
   const [mode, setMode] = useState<ChatMode>("chat");
   const [streamTools, setStreamTools] = useState<ToolChip[]>([]);
+  const [streamThinking, setStreamThinking] = useState("");
   const [busy, setBusy] = useState(false);
   const [streamText, setStreamText] = useState("");
   const [lastContext, setLastContext] = useState<ContextUsage | null>(null);
@@ -99,6 +100,7 @@ export function ChatPanel({ storyId }: Props) {
     setErr(null);
     setStreamText("");
     setStreamTools([]);
+    setStreamThinking("");
     setLastContext(null);
     setRoutedAgent(null);
     setRouteReason(null);
@@ -129,6 +131,9 @@ export function ChatPanel({ storyId }: Props) {
           setLastContext(data.usage);
           setRoutedAgent(data.agent);
           setRouteReason(data.routeReason);
+        } else if (ev.event === "thinking") {
+          const data = ev.data as { text: string };
+          setStreamThinking((t) => t + data.text);
         } else if (ev.event === "delta") {
           const data = ev.data as { text: string };
           buffered += data.text;
@@ -151,6 +156,7 @@ export function ChatPanel({ storyId }: Props) {
           const r = await api.storyMessages(storyId);
           setMessages(r.messages);
           setStreamText("");
+          setStreamThinking("");
           refreshUsage(storyId);
           if (storyId) clearPins(storyId);
         } else if (ev.event === "error") {
@@ -161,6 +167,7 @@ export function ChatPanel({ storyId }: Props) {
     } catch (e) {
       setErr((e as Error).message || "chat failed");
       setStreamText("");
+      setStreamThinking("");
     } finally {
       setBusy(false);
     }
@@ -255,19 +262,30 @@ export function ChatPanel({ storyId }: Props) {
           />
         ))}
         {streamTools.length > 0 && <ToolStrip tools={streamTools} />}
-        {streamText && (
-          <MessageBubble
-            m={{
-              id: -1,
-              story_id: storyId,
-              role: "assistant",
-              agent: routedAgent ?? agent,
-              content: streamText,
-              context_used: null,
-              created_at: Date.now(),
-            }}
-            streaming
+        {busy && !streamText && (
+          <PendingAssistant
+            label={routedAgent ?? (agent === "auto" ? "routing…" : agent)}
+            phase={lastContext ? "thinking" : "context"}
+            thinking={streamThinking}
+            startTs={turnStartRef.current}
           />
+        )}
+        {streamText && (
+          <>
+            {streamThinking && <ThoughtDisclosure thinking={streamThinking} />}
+            <MessageBubble
+              m={{
+                id: -1,
+                story_id: storyId,
+                role: "assistant",
+                agent: routedAgent ?? agent,
+                content: streamText,
+                context_used: null,
+                created_at: Date.now(),
+              }}
+              streaming
+            />
+          </>
         )}
       </div>
 
@@ -480,6 +498,73 @@ export function ChatPanel({ storyId }: Props) {
         </div>
       </div>
     </div>
+  );
+}
+
+function useElapsed(startTs: number): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 200);
+    return () => clearInterval(t);
+  }, []);
+  return startTs > 0 ? Math.max(0, (now - startTs) / 1000) : 0;
+}
+
+// Shown the moment a turn starts, before any prose token — so the user always
+// sees the model is working. Streams thinking text (tail) when it arrives.
+function PendingAssistant({
+  label,
+  phase,
+  thinking,
+  startTs,
+}: {
+  label: string;
+  phase: "context" | "thinking";
+  thinking: string;
+  startTs: number;
+}) {
+  const elapsed = useElapsed(startTs);
+  const tail = thinking.trim().split("\n").slice(-6).join("\n");
+  const status = thinking ? "thinking" : phase === "context" ? "gathering context" : "thinking";
+  return (
+    <div className="flex justify-start">
+      <div className="max-w-[85%] rounded-lg px-3 py-2 sm:px-4 sm:py-3 bg-paper/40 border border-bg/10 dark:bg-bg/60 dark:border-muted/20">
+        <div className="text-xs text-muted mb-1 flex items-center gap-2">
+          <span>{label}</span>
+          <span className="text-tealBright inline-flex items-center gap-1">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-tealBright animate-pulse" />
+            {status}…
+          </span>
+          {elapsed >= 0.5 && <span className="ml-auto tabular-nums">{elapsed.toFixed(1)}s</span>}
+        </div>
+        {tail && (
+          <pre className="whitespace-pre-wrap font-ui text-xs text-muted/80 max-h-40 overflow-hidden">
+            {tail}
+          </pre>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Collapsed "thought" once prose is streaming, so the reasoning stays available
+// without crowding the answer.
+function ThoughtDisclosure({ thinking }: { thinking: string }) {
+  const [open, setOpen] = useState(false);
+  const lines = thinking.trim().split("\n").filter(Boolean).length;
+  return (
+    <details
+      className="text-xs text-muted ml-1"
+      open={open}
+      onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}
+    >
+      <summary className="cursor-pointer hover:text-tealBright select-none">
+        💭 thought {open ? "" : `(${lines} line${lines === 1 ? "" : "s"})`}
+      </summary>
+      <pre className="whitespace-pre-wrap font-ui mt-1 text-muted/80 border-l-2 border-muted/30 pl-2">
+        {thinking.trim()}
+      </pre>
+    </details>
   );
 }
 

@@ -80,6 +80,7 @@ ${pack || "(nothing retrieved — the index may be empty for this scope)"}`;
       systemPrompt,
       cwd: cfg.VAULT_PATH,
       skipMcp: true,
+      model: cfg.CLAUDE_FAST_MODEL || undefined,
       onUsage: (u) =>
         recorder({
           inputTokens: u.inputTokens,
@@ -88,7 +89,7 @@ ${pack || "(nothing retrieved — the index may be empty for this scope)"}`;
           model: u.model,
         }),
     })) {
-      yield { type: "delta", text: chunk };
+      if (typeof chunk === "string") yield { type: "delta", text: chunk };
     }
     yield { type: "done" };
   } catch (e) {

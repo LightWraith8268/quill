@@ -1,7 +1,7 @@
 // Agent router. Maps "claude" | "codex" | "gemini" | "auto" to the right wrapper.
 // Auto mode picks an agent from heuristic intent classification of the user message.
 
-import { claudeStream, type ClaudeOpts } from "./claude.ts";
+import { claudeStream, type ClaudeOpts, type StreamChunk } from "./claude.ts";
 import { codexStream, type CodexOpts } from "./codex.ts";
 import { geminiStream, type GeminiOpts } from "./gemini.ts";
 
@@ -13,7 +13,7 @@ export type AgentOpts = ClaudeOpts & CodexOpts & GeminiOpts;
 export type RouteResult = {
   agent: AgentName;
   reason: string;
-  stream: AsyncGenerator<string, void, void>;
+  stream: AsyncGenerator<StreamChunk, void, void>;
 };
 
 /**
@@ -81,7 +81,7 @@ export function streamFor(
   agent: AgentName,
   prompt: string,
   opts: AgentOpts
-): AsyncGenerator<string, void, void> {
+): AsyncGenerator<StreamChunk, void, void> {
   switch (agent) {
     case "claude":
       return claudeStream(prompt, opts);

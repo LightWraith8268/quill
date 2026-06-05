@@ -106,7 +106,7 @@ export async function* inlineEditStream(
         model: u.model,
       }),
   })) {
-    yield chunk;
+    if (typeof chunk === "string") yield chunk;
   }
 }
 
@@ -141,6 +141,7 @@ export async function inlineGhost(
     systemPrompt,
     cwd: cfg.VAULT_PATH,
     skipMcp: true,
+    model: cfg.CLAUDE_FAST_MODEL || undefined,
     onUsage: (u) => {
       model = u.model ?? model;
       recorder({
@@ -196,6 +197,6 @@ export async function* inlineContinueStream(
         model: u.model,
       }),
   })) {
-    yield chunk;
+    if (typeof chunk === "string") yield chunk;
   }
 }

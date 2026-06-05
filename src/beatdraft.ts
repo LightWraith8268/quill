@@ -118,6 +118,6 @@ export async function* draftBeatStream(
         model: u.model,
       }),
   })) {
-    yield chunk;
+    if (typeof chunk === "string") yield chunk;
   }
 }

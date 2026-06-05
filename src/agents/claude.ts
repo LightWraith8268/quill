@@ -18,8 +18,9 @@ export type ClaudeOpts = {
   cwd?: string;
   signal?: AbortSignal;
   bin?: string;
-  // Force a model (e.g. claude-sonnet-4-6) — faster TTFT than Opus for chat.
-  // Defaults from CLAUDE_MODEL env; "" = let the CLI pick.
+  // Per-call model override. Utility (non-prose) paths pass cfg.CLAUDE_FAST_MODEL
+  // here to run on a faster model; prose paths pass nothing so they keep the
+  // prose model (CLAUDE_MODEL env, default "" = the CLI default, e.g. Opus 4.8).
   model?: string;
   // Skip loading MCP servers (--strict-mcp-config with no --mcp-config = none).
   // Cuts spawn latency for chat. Defaults from CLAUDE_SKIP_MCP env (default on).
@@ -31,6 +32,11 @@ export type ClaudeOpts = {
   onToolCall?: (e: AgentToolEvent) => void;
   onUsage?: (u: AgentUsage) => void;
 };
+
+// What claudeStream yields. Prose text is a plain string; extended-thinking is
+// wrapped so consumers can show "the model is working" live (and never splice
+// thinking into the prose). Consumers that only want prose: `typeof c === "string"`.
+export type StreamChunk = string | { thinking: string };
 
 // Perf knobs read from env so every caller (router → chat/inline) gets them
 // without threading config through. opts.* still overrides per-call.
@@ -45,6 +51,7 @@ type StreamEvent = {
     content?: {
       type: string;
       text?: string;
+      thinking?: string; // thinking block (full message)
       id?: string; // tool_use
       name?: string; // tool_use
       input?: unknown; // tool_use
@@ -68,7 +75,10 @@ type StreamEvent = {
   model?: string;
   delta?: { text?: string; type?: string };
   content_block?: { type: string; text?: string };
-  event?: { type?: string; delta?: { type?: string; text?: string } };
+  event?: {
+    type?: string;
+    delta?: { type?: string; text?: string; thinking?: string };
+  };
 };
 
 import { resolveBin as resolvePathBin } from "./resolve.ts";
@@ -80,7 +90,7 @@ function resolveBin(bin: string | undefined): string {
 export async function* claudeStream(
   prompt: string,
   opts: ClaudeOpts = {}
-): AsyncGenerator<string, void, void> {
+): AsyncGenerator<StreamChunk, void, void> {
   const args = ["-p", "--output-format", "stream-json", "--include-partial-messages", "--verbose"];
   const model = opts.model ?? ENV_MODEL;
   const skipMcp = opts.skipMcp ?? ENV_SKIP_MCP;
@@ -114,7 +124,7 @@ export async function* claudeStream(
   let finalUsage: AgentUsage | null = null;
   let streamed = false;
 
-  const handleLine = (line: string): string | null => {
+  const handleLine = (line: string): StreamChunk | null => {
     let json: StreamEvent;
     try {
       json = JSON.parse(line) as StreamEvent;
@@ -135,6 +145,17 @@ export async function* claudeStream(
           opts.onToolCall({ phase: "end", id: b.tool_use_id, ok: b.is_error !== true });
         }
       }
+    }
+
+    // Extended-thinking deltas — yielded live (wrapped) so the UI can show the
+    // model working during the silent pre-prose phase. Never spliced into prose.
+    if (
+      json.type === "stream_event" &&
+      json.event?.type === "content_block_delta" &&
+      json.event.delta?.type === "thinking_delta" &&
+      json.event.delta.thinking
+    ) {
+      return { thinking: json.event.delta.thinking };
     }
 
     // Token-by-token partial delta (needs --include-partial-messages).
@@ -163,13 +184,13 @@ export async function* claudeStream(
       const line = buf.slice(0, nl).trim();
       buf = buf.slice(nl + 1);
       if (!line) continue;
-      const text = handleLine(line);
-      if (text) yield text;
+      const out = handleLine(line);
+      if (out) yield out;
     }
   }
   if (buf.trim()) {
-    const text = handleLine(buf.trim());
-    if (text) yield text;
+    const out = handleLine(buf.trim());
+    if (out) yield out;
   }
 
   if (finalUsage && opts.onUsage) opts.onUsage(finalUsage);
@@ -217,6 +238,8 @@ export async function claudeOnce(
   opts: ClaudeOpts = {}
 ): Promise<string> {
   const parts: string[] = [];
-  for await (const chunk of claudeStream(prompt, opts)) parts.push(chunk);
+  for await (const chunk of claudeStream(prompt, opts)) {
+    if (typeof chunk === "string") parts.push(chunk);
+  }
   return parts.join("");
 }
