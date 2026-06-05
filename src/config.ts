@@ -41,6 +41,15 @@ const Schema = z.object({
   // creds) instead of ~/.claude — e.g. a writing-tuned profile. Inherited by the
   // spawned Claude CLI via the process env.
   CLAUDE_CONFIG_DIR: z.string().default(""),
+  // Force the chat/inline Claude model — e.g. claude-sonnet-4-6 for faster
+  // first-token than Opus. "" = let the CLI pick (its configured default).
+  CLAUDE_MODEL: z.string().default(""),
+  // Skip MCP server loading for spawned Claude (cuts spawn latency a lot).
+  // Default true — chat/inline don't need MCP. Read by agents/claude.ts.
+  CLAUDE_SKIP_MCP: z
+    .string()
+    .default("true")
+    .transform((v) => v.toLowerCase() === "true"),
   HYBRID_BM25: z
     .string()
     .default("true")

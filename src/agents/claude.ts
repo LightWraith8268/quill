@@ -13,8 +13,20 @@ export type ClaudeOpts = {
   cwd?: string;
   signal?: AbortSignal;
   bin?: string;
+  // Force a model (e.g. claude-sonnet-4-6) — faster TTFT than Opus for chat.
+  // Defaults from CLAUDE_MODEL env; "" = let the CLI pick.
+  model?: string;
+  // Skip loading MCP servers (--strict-mcp-config with no --mcp-config = none).
+  // Cuts spawn latency for chat. Defaults from CLAUDE_SKIP_MCP env (default on).
+  skipMcp?: boolean;
   onUsage?: (u: AgentUsage) => void;
 };
+
+// Perf knobs read from env so every caller (router → chat/inline) gets them
+// without threading config through. opts.* still overrides per-call.
+const ENV_MODEL = process.env.CLAUDE_MODEL?.trim() || "";
+const ENV_SKIP_MCP =
+  (process.env.CLAUDE_SKIP_MCP ?? "true").trim().toLowerCase() !== "false";
 
 type StreamEvent = {
   type?: string;
@@ -52,6 +64,10 @@ export async function* claudeStream(
   opts: ClaudeOpts = {}
 ): AsyncGenerator<string, void, void> {
   const args = ["-p", "--output-format", "stream-json", "--include-partial-messages", "--verbose"];
+  const model = opts.model ?? ENV_MODEL;
+  const skipMcp = opts.skipMcp ?? ENV_SKIP_MCP;
+  if (model) args.push("--model", model);
+  if (skipMcp) args.push("--strict-mcp-config");
   const composed = opts.systemPrompt
     ? `${opts.systemPrompt}\n\n=== USER MESSAGE ===\n${prompt}`
     : prompt;
