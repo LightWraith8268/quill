@@ -25,7 +25,7 @@ if [[ "$REPO" == /mnt/* ]]; then
   mkdir -p "$TARGET"
   rsync -a --delete \
     --exclude node_modules --exclude web/node_modules --exclude web/dist \
-    --exclude data --exclude .git \
+    --exclude data --exclude .git --exclude .env \
     "$REPO"/ "$TARGET"/
 else
   TARGET="$REPO"
