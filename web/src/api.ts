@@ -266,6 +266,19 @@ export const api = {
     req<{ ok: boolean }>(`/stories/${storyId}/kb/pending/${pid}/reject`, { method: "POST" }),
   kbPendingClear: (storyId: number) =>
     req<{ cleared: number }>(`/stories/${storyId}/kb/pending/clear`, { method: "POST" }),
+  kbTimeline: (storyId: number, chapter?: number) =>
+    req<{ events: TimelineFact[]; maxChapter: number; state: KnowledgeState | null }>(
+      `/stories/${storyId}/kb/timeline${chapter != null ? `?chapter=${chapter}` : ""}`
+    ),
+  kbSetBounds: (
+    storyId: number,
+    factId: number,
+    bounds: { fromChapter?: number | null; toChapter?: number | null }
+  ) =>
+    req<{ ok: boolean }>(`/stories/${storyId}/kb/facts/${factId}/bounds`, {
+      method: "POST",
+      body: JSON.stringify(bounds),
+    }),
   kbSearch: (storyId: number, q: string, facts = 12, chunks = 6) =>
     req<{ items: CanonItem[] }>(
       `/stories/${storyId}/kb/search?q=${encodeURIComponent(q)}&facts=${facts}&chunks=${chunks}`
@@ -651,6 +664,25 @@ export type PendingFact = {
   conflict_claim: string | null;
   source_path: string | null;
   created_at: number;
+};
+export type TimelineFact = {
+  id: number;
+  entity_id: number | null;
+  entity: string | null;
+  kind: string;
+  claim: string;
+  canon_weight: CanonWeight;
+  book: string | null;
+  applies_from_book: string | null;
+  applies_from_chapter: number | null;
+  applies_to_book: string | null;
+  applies_to_chapter: number | null;
+};
+export type KnowledgeState = {
+  chapter: number;
+  book: string | null;
+  active: TimelineFact[];
+  future: TimelineFact[];
 };
 export type FactHistoryRow = {
   change_type: string;

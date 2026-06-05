@@ -32,6 +32,12 @@ import {
   rejectPending,
   clearPending,
 } from "./knowledge/selfbuild.ts";
+import {
+  timelineEvents,
+  knowledgeStateAt,
+  maxChapter,
+  setFactBounds,
+} from "./knowledge/timeline.ts";
 import { entityCount, factCount, listGraph, entityFacts } from "./knowledge/store.ts";
 import { retrieveCanon } from "./knowledge/retrieve.ts";
 import { checkContinuity, checkContinuityFile } from "./knowledge/continuity.ts";
@@ -1280,6 +1286,46 @@ export function buildApp(cfg: Config) {
     const story = getStory(db, Number(c.req.param("id")));
     if (!story) return c.json({ error: "story not found" }, 404);
     return c.json({ cleared: clearPending(db, story.series) });
+  });
+
+  // Timeline + character-knowledge state: the reveal timeline (bounded facts)
+  // plus, when ?chapter= is given, canon as-of that chapter (active vs future).
+  app.get("/api/stories/:id/kb/timeline", (c) => {
+    const story = getStory(db, Number(c.req.param("id")));
+    if (!story) return c.json({ error: "story not found" }, 404);
+    const series = story.series;
+    const book = story.name;
+    const chapterRaw = c.req.query("chapter");
+    const events = timelineEvents(db, series, book);
+    const max = maxChapter(db, series);
+    if (chapterRaw != null && chapterRaw !== "") {
+      const chapter = Number(chapterRaw);
+      const state = knowledgeStateAt(db, series, book, chapter);
+      return c.json({ events, maxChapter: max, state });
+    }
+    return c.json({ events, maxChapter: max, state: null });
+  });
+
+  app.post("/api/stories/:id/kb/facts/:fid/bounds", async (c) => {
+    const fid = Number(c.req.param("fid"));
+    if (!Number.isFinite(fid)) return c.json({ error: "bad id" }, 400);
+    const body = (await c.req.json().catch(() => ({}))) as {
+      fromChapter?: number | null;
+      toChapter?: number | null;
+      fromBook?: string | null;
+      toBook?: string | null;
+    };
+    try {
+      setFactBounds(db, fid, {
+        fromBook: body.fromBook ?? null,
+        fromChapter: body.fromChapter ?? null,
+        toBook: body.toBook ?? null,
+        toChapter: body.toChapter ?? null,
+      });
+      return c.json({ ok: true });
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
+    }
   });
 
   // Canon-aware retrieval scoped to a story's series/book.
