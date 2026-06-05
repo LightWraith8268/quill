@@ -980,3 +980,11 @@ export async function* inlineContinueStream(
   yield* parseSse(reader);
 }
 
+export async function* draftBeatStream(
+  storyId: number,
+  nodeId: number
+): AsyncGenerator<{ event: string; data: unknown }, void, void> {
+  const reader = await openSse(`/api/stories/${storyId}/outline/${nodeId}/draft`, {});
+  yield* parseSse(reader);
+}
+

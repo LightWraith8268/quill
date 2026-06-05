@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from "react";
 import { api, type OutlineNode } from "../api.ts";
+import { BeatDraftModal } from "./BeatDraftModal.tsx";
 
 type Props = { storyId: number };
 type ViewMode = "list" | "board" | "reading";
@@ -22,6 +23,8 @@ export function OutlineView({ storyId }: Props) {
   const [creating, setCreating] = useState<{ parentId: number | null; kind: OutlineNode["kind"] } | null>(null);
   const [reading, setReading] = useState<{ parts: { title: string; content: string; path: string }[] } | null>(null);
   const [readingBusy, setReadingBusy] = useState(false);
+  const [drafting, setDrafting] = useState<OutlineNode | null>(null);
+  const [storyPath, setStoryPath] = useState<string>("");
   const [err, setErr] = useState<string | null>(null);
 
   const refresh = async () => {
@@ -35,6 +38,7 @@ export function OutlineView({ storyId }: Props) {
 
   useEffect(() => {
     refresh();
+    api.storyGet(storyId).then((s) => setStoryPath(s.path)).catch(() => {});
   }, [storyId]);
 
   const acts = nodes.filter((n) => n.parent_id === null);
@@ -125,7 +129,13 @@ export function OutlineView({ storyId }: Props) {
                     <NodeRow node={ch} onEdit={() => setEditing(ch)} />
                     <div className="ml-6 mt-1 space-y-1">
                       {childrenOf(ch.id).map((sc) => (
-                        <NodeRow key={sc.id} node={sc} onEdit={() => setEditing(sc)} compact />
+                        <NodeRow
+                          key={sc.id}
+                          node={sc}
+                          onEdit={() => setEditing(sc)}
+                          onDraft={() => setDrafting(sc)}
+                          compact
+                        />
                       ))}
                       <button
                         onClick={() => setCreating({ parentId: ch.id, kind: "scene" })}
@@ -215,6 +225,11 @@ export function OutlineView({ storyId }: Props) {
         <NodeEditor
           node={editing}
           onClose={() => setEditing(null)}
+          onDraft={() => {
+            const n = editing;
+            setEditing(null);
+            setDrafting(n);
+          }}
           onSaved={async (n) => {
             setEditing(null);
             if (n) await refresh();
@@ -233,6 +248,15 @@ export function OutlineView({ storyId }: Props) {
           }}
         />
       )}
+      {drafting && (
+        <BeatDraftModal
+          storyId={storyId}
+          node={drafting}
+          defaultDir={storyPath || "Books/"}
+          onClose={() => setDrafting(null)}
+          onDrafted={refresh}
+        />
+      )}
     </div>
   );
 }
@@ -240,35 +264,47 @@ export function OutlineView({ storyId }: Props) {
 function NodeRow({
   node,
   onEdit,
+  onDraft,
   compact,
 }: {
   node: OutlineNode;
   onEdit: () => void;
+  onDraft?: () => void;
   compact?: boolean;
 }) {
   return (
-    <button
-      onClick={onEdit}
-      className={`w-full text-left flex items-baseline gap-2 ${compact ? "" : "py-1"}`}
-    >
-      <span className="text-xs text-muted uppercase font-mono w-16">{node.kind}</span>
-      <span className={`font-${compact ? "ui" : "display"} ${compact ? "text-sm" : "text-lg"} truncate`}>
-        {node.title}
-      </span>
-      <span className={`text-xs px-1.5 py-0.5 rounded ml-auto ${STATUS_COLOR[node.status]}`}>
+    <div className={`w-full flex items-baseline gap-2 group ${compact ? "" : "py-1"}`}>
+      <button onClick={onEdit} className="flex-1 text-left flex items-baseline gap-2 min-w-0">
+        <span className="text-xs text-muted uppercase font-mono w-16">{node.kind}</span>
+        <span className={`font-${compact ? "ui" : "display"} ${compact ? "text-sm" : "text-lg"} truncate`}>
+          {node.title}
+        </span>
+      </button>
+      {onDraft && node.kind === "scene" && (
+        <button
+          onClick={onDraft}
+          className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-xs text-tealBright hover:underline shrink-0"
+          title="Draft this beat into a scene with full canon + style context"
+        >
+          ✍ Draft
+        </button>
+      )}
+      <span className={`text-xs px-1.5 py-0.5 rounded ${STATUS_COLOR[node.status]}`}>
         {node.status}
       </span>
-    </button>
+    </div>
   );
 }
 
 function NodeEditor({
   node,
   onClose,
+  onDraft,
   onSaved,
 }: {
   node: OutlineNode;
   onClose: () => void;
+  onDraft?: () => void;
   onSaved: (n: OutlineNode | null) => void;
 }) {
   const [title, setTitle] = useState(node.title);
@@ -354,6 +390,11 @@ function NodeEditor({
           <button onClick={remove} disabled={busy} className="btn btn-ghost text-xs text-red-500">
             Delete
           </button>
+          {onDraft && node.kind === "scene" && (
+            <button onClick={onDraft} disabled={busy} className="btn btn-ghost text-xs text-tealBright">
+              ✍ Draft this beat
+            </button>
+          )}
           <button onClick={onClose} className="btn btn-ghost ml-auto">Cancel</button>
           <button onClick={save} disabled={busy} className="btn btn-primary">
             {busy ? "Saving…" : "Save"}

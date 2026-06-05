@@ -65,6 +65,7 @@ import { checkVoice } from "./voice.ts";
 import { runEnsemble } from "./ensemble.ts";
 import { inlineEditStream, inlineContinueStream, inlineGhost } from "./inline.ts";
 import { editorialPass, isEditorialPass, EDITORIAL_PASSES } from "./editorial.ts";
+import { draftBeatStream } from "./beatdraft.ts";
 import {
   listOutline,
   createNode,
@@ -863,6 +864,16 @@ export function buildApp(cfg: Config) {
     if (!parsed.success) return c.json({ error: "bad request", issues: parsed.error.flatten() }, 400);
     reorderNodes(db, id, parsed.data.parentId, parsed.data.orderedIds);
     return c.json({ ok: true });
+  });
+
+  // Draft this beat — stream a scene drafted from an outline node's context pack.
+  app.post("/api/stories/:id/outline/:nodeId/draft", (c) => {
+    const id = Number(c.req.param("id"));
+    const nodeId = Number(c.req.param("nodeId"));
+    if (!Number.isFinite(id) || !Number.isFinite(nodeId)) {
+      return c.json({ error: "bad id" }, 400);
+    }
+    return inlineSse(draftBeatStream(cfg, db, id, nodeId));
   });
 
   // ===== Reading-pass =====
