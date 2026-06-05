@@ -17,7 +17,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api } from "../api.ts";
 import { VAULT_NAV_EVENT, VAULT_PENDING_KEY } from "../citations.ts";
-import { recentWorkspaces } from "../recents.ts";
+import { recentWorkspaces, useRecentWorkspaces } from "../recents.ts";
+import { CommandPalette, type PaletteCommand } from "./CommandPalette.tsx";
 import { FileTree } from "./FileTree.tsx";
 import { FileEditor } from "./FileEditor.tsx";
 import { ChatPanel } from "./ChatPanel.tsx";
@@ -135,8 +136,23 @@ export function IdeShell({
   const [leftWidth, setLeftWidth] = useState(() => numFrom(LEFT_W_KEY, 280));
   const [chatWidth, setChatWidth] = useState(() => numFrom(CHAT_W_KEY, 420));
 
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const wsRecents = useRecentWorkspaces();
+
   // Whether the editor has unsaved changes — used to guard navigation away.
   const dirtyRef = useRef(false);
+
+  // Command palette: Ctrl/Cmd+P (overrides browser print, like an editor).
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "p" || e.key === "P")) {
+        e.preventDefault();
+        setPaletteOpen(true);
+      }
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(TREE_OPEN_KEY, treeOpen ? "1" : "0");
@@ -235,6 +251,45 @@ export function IdeShell({
     setCenterView(v);
     setMobilePane("editor");
   };
+
+  const paletteCommands: PaletteCommand[] = [
+    {
+      id: "editor",
+      label: "Editor",
+      hint: "view",
+      run: () => {
+        setCenterView("editor");
+        setMobilePane("editor");
+      },
+    },
+    ...AUX_ORDER.map((v) => ({
+      id: v,
+      label: VIEW_META[v].title,
+      hint: "view",
+      run: () => {
+        setCenterView(v);
+        setMobilePane("editor");
+      },
+    })),
+    {
+      id: "chat",
+      label: "Chat",
+      hint: "view",
+      run: () => {
+        setChatOpen(true);
+        setMobilePane("chat");
+      },
+    },
+    {
+      id: "toggle-tree",
+      label: "Toggle file tree",
+      hint: "action",
+      run: () => {
+        setTreeOpen((v) => !v);
+        setMobilePane("files");
+      },
+    },
+  ];
 
   const treeShown = isDesktop ? treeOpen : mobilePane === "files";
   const chatShown = isDesktop ? chatOpen : mobilePane === "chat";
@@ -433,6 +488,15 @@ export function IdeShell({
           onClick={() => setMobilePane("more")}
         />
       </nav>
+
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        commands={paletteCommands}
+        onOpenFile={openFile}
+        onOpenWorkspace={openWorkspace}
+        recents={wsRecents.recents}
+      />
     </div>
   );
 }
