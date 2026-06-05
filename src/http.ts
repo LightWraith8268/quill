@@ -63,7 +63,7 @@ import { logError, recentErrors } from "./errlog.ts";
 import { listUsageEvents, usageRollup } from "./usage.ts";
 import { checkVoice } from "./voice.ts";
 import { runEnsemble } from "./ensemble.ts";
-import { inlineEditStream, inlineContinueStream } from "./inline.ts";
+import { inlineEditStream, inlineContinueStream, inlineGhost } from "./inline.ts";
 import {
   listOutline,
   createNode,
@@ -197,6 +197,12 @@ const InlineContinueBody = z.object({
   storyId: z.number().int().positive().optional(),
   precedingText: z.string().min(1),
   length: z.enum(["sentence", "paragraph", "scene"]).optional(),
+});
+
+const InlineGhostBody = z.object({
+  storyId: z.number().int().positive().optional(),
+  precedingText: z.string().min(1),
+  variant: z.number().int().min(0).optional(),
 });
 
 const OutlineCreateBody = z.object({
@@ -760,6 +766,18 @@ export function buildApp(cfg: Config) {
     const parsed = InlineContinueBody.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return c.json({ error: "bad request", issues: parsed.error.flatten() }, 400);
     return inlineSse(inlineContinueStream(cfg, db, parsed.data));
+  });
+
+  // Ambient ghost completion — short, canon-aware, returned whole (not SSE).
+  app.post("/api/edit/ghost", async (c) => {
+    const parsed = InlineGhostBody.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return c.json({ error: "bad request", issues: parsed.error.flatten() }, 400);
+    try {
+      const result = await inlineGhost(cfg, db, parsed.data);
+      return c.json(result);
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
+    }
   });
 
   // ===== Outline =====

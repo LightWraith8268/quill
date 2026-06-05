@@ -279,6 +279,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify(bounds),
     }),
+  ghost: (precedingText: string, storyId?: number, variant?: number) =>
+    req<{ text: string; model: string | null }>(`/edit/ghost`, {
+      method: "POST",
+      body: JSON.stringify({ precedingText, storyId, variant }),
+    }),
   kbSearch: (storyId: number, q: string, facts = 12, chunks = 6) =>
     req<{ items: CanonItem[] }>(
       `/stories/${storyId}/kb/search?q=${encodeURIComponent(q)}&facts=${facts}&chunks=${chunks}`

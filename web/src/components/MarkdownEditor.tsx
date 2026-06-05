@@ -11,6 +11,7 @@ import { languages } from "@codemirror/language-data";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { basicSetup } from "codemirror";
 import { antiPatternLinter } from "../editor/linter.ts";
+import { ambientGhost, type GhostProvider } from "../editor/ghost.ts";
 
 export type MarkdownEditorHandle = {
   replaceRange: (from: number, to: number, text: string) => void;
@@ -32,6 +33,9 @@ type Props = {
   // Hovering a canon entity's name shows its facts (knowledge-graph lookup).
   entities?: CanonEntity[];
   onEntityFacts?: (id: number) => Promise<CanonFact[]>;
+  // Ambient ghost-text: when enabled, fetch a short continuation on pause.
+  ghostEnabled?: boolean;
+  ghostProvider?: GhostProvider;
 };
 
 export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function MarkdownEditor(
@@ -45,6 +49,8 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function M
     theme,
     entities,
     onEntityFacts,
+    ghostEnabled = false,
+    ghostProvider,
   }: Props,
   externalRef
 ) {
@@ -56,6 +62,8 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function M
   const onSaveRef = useRef(onSaveShortcut);
   const onCommandKRef = useRef(onCommandK);
   const onTabContinueRef = useRef(onTabContinue);
+  const ghostEnabledRef = useRef(ghostEnabled);
+  const ghostProviderRef = useRef(ghostProvider);
   const themeCompartmentRef = useRef(new Compartment());
   const readOnlyCompartmentRef = useRef(new Compartment());
 
@@ -75,6 +83,16 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function M
   useEffect(() => {
     onFactsRef.current = onEntityFacts;
   }, [onEntityFacts]);
+  useEffect(() => {
+    ghostProviderRef.current = ghostProvider;
+  }, [ghostProvider]);
+  // Flip the ambient flag live; clearing a shown ghost is handled by the plugin
+  // on the next interaction, but nudge it by dispatching an empty transaction.
+  useEffect(() => {
+    ghostEnabledRef.current = ghostEnabled;
+    const view = viewRef.current;
+    if (view && !ghostEnabled) view.dispatch({});
+  }, [ghostEnabled]);
   useEffect(() => {
     const idx = new Map<string, number>();
     for (const e of entities ?? [])
@@ -217,6 +235,10 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function M
         EditorView.lineWrapping,
         antiPatternLinter(),
         canonHover,
+        ambientGhost({
+          enabled: () => ghostEnabledRef.current,
+          provider: () => ghostProviderRef.current,
+        }),
         updateListener,
         themeCompartmentRef.current.of(
           resolvedTheme === "dark" ? oneDark : [],

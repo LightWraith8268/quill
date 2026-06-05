@@ -83,6 +83,9 @@ export function FileEditor({
     range: { from: number; to: number };
   } | null>(null);
   const [continuing, setContinuing] = useState(false);
+  const [ghost, setGhost] = useState<boolean>(
+    () => typeof localStorage !== "undefined" && localStorage.getItem("quill.ghost") === "1",
+  );
   const [voiceScore, setVoiceScore] = useState<{ score: number; band: string } | null>(null);
   const [continuity, setContinuity] = useState<ContinuityIssue[] | null>(null);
   const [checkingContinuity, setCheckingContinuity] = useState(false);
@@ -413,6 +416,22 @@ export function FileEditor({
                   <>
                     <button
                       type="button"
+                      className={`btn text-xs ${ghost ? "btn-primary" : "btn-ghost"}`}
+                      onClick={() => {
+                        const next = !ghost;
+                        setGhost(next);
+                        try {
+                          localStorage.setItem("quill.ghost", next ? "1" : "0");
+                        } catch {
+                          /* ignore */
+                        }
+                      }}
+                      title="Ambient ghost-text: a gray continuation appears as you pause. Tab accepts, Esc dismisses, Alt-] for an alternate."
+                    >
+                      ✨ Ambient
+                    </button>
+                    <button
+                      type="button"
                       className="btn btn-primary text-xs"
                       onClick={saveEdit}
                       disabled={saving || !isDirty}
@@ -504,6 +523,12 @@ export function FileEditor({
                   theme={isDark ? "dark" : "light"}
                   entities={canonEntities}
                   onEntityFacts={fetchEntityFacts}
+                  ghostEnabled={ghost}
+                  ghostProvider={(preceding, variant) =>
+                    api
+                      .ghost(preceding, activeStoryId ?? undefined, variant)
+                      .then((r) => r.text)
+                  }
                 />
               </>
             ) : (
