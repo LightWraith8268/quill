@@ -1,0 +1,6 @@
+# Shell scripts and systemd units must stay LF — they're run on Linux/WSL.
+# Without this, a Windows checkout (autocrlf) gives them CRLF and bash fails
+# with `\r` errors when the repo is copied to the WSL box.
+*.sh text eol=lf
+*.service text eol=lf
+deploy/setup.sh text eol=lf
