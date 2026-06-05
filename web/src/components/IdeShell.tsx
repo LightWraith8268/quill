@@ -142,8 +142,9 @@ export function IdeShell({
   const [paletteOpen, setPaletteOpen] = useState(false);
   const wsRecents = useRecentWorkspaces();
 
-  // Whether the editor has unsaved changes — used to guard navigation away.
+  // Whether each editor pane has unsaved changes — guards navigation away.
   const dirtyRef = useRef(false);
+  const secondaryDirtyRef = useRef(false);
 
   // Command palette: Ctrl/Cmd+P (overrides browser print, like an editor).
   useEffect(() => {
@@ -172,12 +173,15 @@ export function IdeShell({
 
   const openPathRef = useRef(openPath);
   openPathRef.current = openPath;
+  const splitPathRef = useRef(splitPath);
+  splitPathRef.current = splitPath;
 
   const openFileInto = (pane: "primary" | "secondary", p: string) => {
+    const curRef = pane === "secondary" ? splitPathRef : openPathRef;
+    const dirty = pane === "secondary" ? secondaryDirtyRef : dirtyRef;
     if (
-      pane === "primary" &&
-      p !== openPathRef.current &&
-      dirtyRef.current &&
+      p !== curRef.current &&
+      dirty.current &&
       !window.confirm("Discard unsaved changes to the current file?")
     ) {
       return;
@@ -193,6 +197,13 @@ export function IdeShell({
     openFileInto(isDesktop && splitOpen ? activePane : "primary", p);
 
   const toggleSplit = () => {
+    if (
+      splitOpen &&
+      secondaryDirtyRef.current &&
+      !window.confirm("Discard unsaved changes in the right pane?")
+    ) {
+      return;
+    }
     setSplitOpen((v) => {
       setActivePane(v ? "primary" : "secondary");
       return !v;
@@ -450,6 +461,9 @@ export function IdeShell({
                   path={splitPath}
                   activeStoryId={activeStoryId}
                   onOpenPath={(p) => openFileInto("secondary", p)}
+                  onDirtyChange={(d) => {
+                    secondaryDirtyRef.current = d;
+                  }}
                 />
               </div>
             )}

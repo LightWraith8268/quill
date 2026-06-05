@@ -162,7 +162,20 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function M
         }
       }
       if (!word) return null;
-      const id = idx.get(word.text.toLowerCase());
+      let id = idx.get(word.text.toLowerCase());
+      if (id === undefined) {
+        // Fall back to sub-tokens so hyphen/apostrophe names (O'Brien,
+        // Jean-Luc) match the index, which is built per alphanumeric token.
+        for (const tok of word.text.toLowerCase().split(/[^a-z0-9]+/)) {
+          if (tok.length >= 3) {
+            const hit = idx.get(tok);
+            if (hit !== undefined) {
+              id = hit;
+              break;
+            }
+          }
+        }
+      }
       if (id === undefined) return null;
       let facts: CanonFact[];
       try {

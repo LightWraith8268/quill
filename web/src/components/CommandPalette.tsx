@@ -43,16 +43,14 @@ export function CommandPalette({
     setQ("");
     setSel(0);
     inputRef.current?.focus();
-    if (files.length === 0) {
-      api
-        .vaultTree()
-        .then((t) => {
-          const out: { path: string; name: string }[] = [];
-          flattenFiles(t, out);
-          setFiles(out);
-        })
-        .catch(() => {});
-    }
+    api
+      .vaultTree()
+      .then((t) => {
+        const out: { path: string; name: string }[] = [];
+        flattenFiles(t, out);
+        setFiles(out);
+      })
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 

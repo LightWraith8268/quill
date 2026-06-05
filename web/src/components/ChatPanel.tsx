@@ -366,6 +366,7 @@ export function ChatPanel({ storyId }: Props) {
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key !== "Enter") return;
+            if (e.nativeEvent.isComposing) return; // mid-IME composition
             if (e.shiftKey) return; // Shift+Enter → newline (default)
             e.preventDefault();
             if (e.ctrlKey || e.metaKey) {

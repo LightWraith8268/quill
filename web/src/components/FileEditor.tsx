@@ -195,7 +195,11 @@ export function FileEditor({
         api
           .kbContinuityText(activeStoryId, dirtyContent, false)
           .then((res) => {
-            if (res.issues.length > 0) setContinuity(res.issues);
+            // Pop the panel when there are issues; if one is already open,
+            // refresh it (so a clean re-save clears resolved contradictions).
+            setContinuity((prev) =>
+              res.issues.length > 0 || prev ? res.issues : prev
+            );
           })
           .catch(() => {});
       }
