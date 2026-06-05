@@ -33,12 +33,45 @@ class Pacer {
   }
 }
 
+// Local embeddings via an Ollama server (free, no key, no limits). Uses the
+// batch /api/embed endpoint. The model's native dimension must equal EMBED_DIM.
+async function ollamaCall(
+  cfg: Config,
+  input: string[]
+): Promise<{ vectors: number[][]; tokens: number }> {
+  const res = await fetch(`${cfg.OLLAMA_URL.replace(/\/$/, "")}/api/embed`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model: cfg.EMBED_MODEL, input }),
+  });
+  if (!res.ok) {
+    throw new Error(
+      `Ollama ${res.status}: ${await res.text()} — is ollama running and "${cfg.EMBED_MODEL}" pulled?`
+    );
+  }
+  const json = (await res.json()) as { embeddings?: number[][] };
+  if (!json.embeddings || json.embeddings.length !== input.length) {
+    throw new Error("Ollama: unexpected embed response (no embeddings)");
+  }
+  const dim = json.embeddings[0]?.length ?? 0;
+  if (dim !== cfg.EMBED_DIM) {
+    throw new Error(
+      `Ollama model "${cfg.EMBED_MODEL}" returns ${dim}-dim vectors but EMBED_DIM=${cfg.EMBED_DIM}. Set EMBED_DIM=${dim} (on a fresh DB) and reindex.`
+    );
+  }
+  return { vectors: json.embeddings, tokens: 0 };
+}
+
 async function call(
   cfg: Config,
   pacer: Pacer,
   input: string[],
   inputType: EmbedInputType
 ): Promise<{ vectors: number[][]; tokens: number }> {
+  if (cfg.EMBED_PROVIDER === "ollama") {
+    await pacer.wait();
+    return ollamaCall(cfg, input);
+  }
   if (!cfg.VOYAGE_API_KEY) {
     throw new Error("VOYAGE_API_KEY not set in .env");
   }
@@ -103,11 +136,14 @@ export async function embedBatch(
   const out: number[][] = new Array(texts.length);
   let totalTokens = 0;
 
-  // RPM → spacing in ms; cap minimum at 1ms to avoid div0 if user sets very high
-  const spacing = Math.max(1, Math.floor(60_000 / Math.max(1, cfg.EMBED_RPM)));
+  // Local (ollama) has no rate/token limits — skip the throttle and use a
+  // large batch budget. Voyage: RPM → spacing, stay under the TPM cap.
+  const isLocal = cfg.EMBED_PROVIDER !== "voyage";
+  const spacing = isLocal
+    ? 2
+    : Math.max(1, Math.floor(60_000 / Math.max(1, cfg.EMBED_RPM)));
   const pacer = new Pacer(spacing);
-  // Stay safely under TPM cap (margin for token estimate undercount)
-  const tokenBudget = Math.floor(cfg.EMBED_TPM * 0.85);
+  const tokenBudget = isLocal ? 200_000 : Math.floor(cfg.EMBED_TPM * 0.85);
 
   let i = 0;
   let batchNum = 0;

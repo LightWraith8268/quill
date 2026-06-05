@@ -3,6 +3,13 @@ import { z } from "zod";
 const Schema = z.object({
   VAULT_PATH: z.string().min(1),
   DB_PATH: z.string().default("./data/quill.db"),
+  // Embedding backend. "voyage" = Voyage AI API (needs VOYAGE_API_KEY).
+  // "ollama" = a local Ollama server (free, unlimited, no key) — set
+  // EMBED_MODEL to a local model (e.g. nomic-embed-text) and EMBED_DIM to its
+  // native dimension (nomic-embed-text = 768). Rerank is skipped without a
+  // Voyage key (hybrid BM25 + vector RRF still applies).
+  EMBED_PROVIDER: z.enum(["voyage", "ollama"]).default("voyage"),
+  OLLAMA_URL: z.string().default("http://127.0.0.1:11434"),
   VOYAGE_API_KEY: z.string().default(""),
   EMBED_MODEL: z.string().default("voyage-4-lite"),
   RERANK_MODEL: z.string().default("rerank-2.5-lite"),

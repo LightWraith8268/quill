@@ -218,7 +218,9 @@ export async function search(
   hits.sort((a, b) => (b.rrfScore ?? 0) - (a.rrfScore ?? 0));
   hits = hits.slice(0, opts.candidates);
 
-  if (opts.useRerank && hits.length > 0) {
+  // Rerank needs Voyage; skip it (RRF order stands) when there's no key, e.g.
+  // the free local-embeddings setup.
+  if (opts.useRerank && cfg.VOYAGE_API_KEY && hits.length > 0) {
     const docs = hits.map((h) => h.content);
     const ranked = await rerank(cfg, query, docs, opts.topK, opts.onRerankUsage);
     hits = ranked.map((r) => ({
