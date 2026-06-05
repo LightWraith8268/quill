@@ -1012,3 +1012,13 @@ export async function* draftBeatStream(
   yield* parseSse(reader);
 }
 
+export type AskSource = { path: string; ref: string | null; score: number; kind: string };
+
+export async function* askStoryStream(
+  storyId: number,
+  question: string
+): AsyncGenerator<{ event: string; data: unknown }, void, void> {
+  const reader = await openSse(`/api/stories/${storyId}/ask`, { question });
+  yield* parseSse(reader);
+}
+

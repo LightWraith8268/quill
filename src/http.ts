@@ -66,6 +66,7 @@ import { runEnsemble } from "./ensemble.ts";
 import { inlineEditStream, inlineContinueStream, inlineGhost } from "./inline.ts";
 import { editorialPass, isEditorialPass, EDITORIAL_PASSES } from "./editorial.ts";
 import { draftBeatStream } from "./beatdraft.ts";
+import { askStoryStream } from "./askstory.ts";
 import {
   listVoices,
   getVoiceProfile,
@@ -880,6 +881,39 @@ export function buildApp(cfg: Config) {
       return c.json({ error: "bad id" }, 400);
     }
     return inlineSse(draftBeatStream(cfg, db, id, nodeId));
+  });
+
+  // Ask your story — NL Q&A over the corpus + canon, streamed with sources.
+  app.post("/api/stories/:id/ask", async (c) => {
+    const id = Number(c.req.param("id"));
+    const body = (await c.req.json().catch(() => ({}))) as { question?: string };
+    if (!body.question || !body.question.trim()) {
+      return c.json({ error: "question required" }, 400);
+    }
+    const question = body.question.trim();
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const enc = new TextEncoder();
+        const send = (event: string, data: unknown) =>
+          controller.enqueue(enc.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+        try {
+          for await (const ev of askStoryStream(cfg, db, id, question)) {
+            send(ev.type, ev);
+          }
+        } catch (e) {
+          send("error", { error: e instanceof Error ? e.message : String(e) });
+        } finally {
+          controller.close();
+        }
+      },
+    });
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+      },
+    });
   });
 
   // ===== Per-character voice engine =====
