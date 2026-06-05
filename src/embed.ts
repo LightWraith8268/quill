@@ -42,7 +42,8 @@ async function ollamaCall(
   const res = await fetch(`${cfg.OLLAMA_URL.replace(/\/$/, "")}/api/embed`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: cfg.EMBED_MODEL, input }),
+    // keep_alive keeps the model resident so queries don't pay a reload.
+    body: JSON.stringify({ model: cfg.EMBED_MODEL, input, keep_alive: "30m" }),
   });
   if (!res.ok) {
     throw new Error(

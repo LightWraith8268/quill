@@ -109,7 +109,9 @@ export async function* runChat(
     content: req.message,
   });
 
+  const t0 = Date.now();
   const built = await buildContext(cfg, db, story, history, req.message);
+  const contextMs = Date.now() - t0;
   // Note: buildContext already recorded embed+rerank usage internally.
   const route = pickAgent(req.agent, req.message);
   yield { type: "context", usage: built.usage, agent: route.agent, routeReason: route.reason };
@@ -120,6 +122,8 @@ export async function* runChat(
   const agentRecorder = makeRecorder(db, route.agent, story.id);
 
   let full = "";
+  let ttftMs = 0;
+  const tStream = Date.now();
   try {
     for await (const chunk of streamFor(route.agent, userPrompt, {
       systemPrompt,
@@ -131,6 +135,7 @@ export async function* runChat(
         model: u.model,
       }),
     })) {
+      if (ttftMs === 0) ttftMs = Date.now() - tStream;
       full += chunk;
       yield { type: "delta", text: chunk };
     }
@@ -147,6 +152,16 @@ export async function* runChat(
     content: full,
     contextUsed: { ...built.usage, routedAgent: route.agent, routeReason: route.reason },
   });
+  console.log(
+    JSON.stringify({
+      type: "chat_timing",
+      agent: route.agent,
+      contextMs,
+      ttftMs,
+      totalMs: Date.now() - t0,
+      chars: full.length,
+    })
+  );
   yield { type: "done", assistantId: assistant.id };
 }
 
