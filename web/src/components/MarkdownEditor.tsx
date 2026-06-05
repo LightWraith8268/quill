@@ -4,7 +4,7 @@
 
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { EditorState, Compartment } from "@codemirror/state";
-import { EditorView, keymap } from "@codemirror/view";
+import { EditorView, keymap, hoverTooltip } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
@@ -18,6 +18,9 @@ export type MarkdownEditorHandle = {
   getCursor: () => number;
 };
 
+export type CanonEntity = { id: number; names: string[] };
+export type CanonFact = { canon_weight: string; claim: string };
+
 type Props = {
   initialContent: string;
   onChange: (content: string) => void;
@@ -26,6 +29,9 @@ type Props = {
   onTabContinue?: (precedingText: string, cursorPos: number) => void;
   readOnly?: boolean;
   theme?: "light" | "dark";
+  // Hovering a canon entity's name shows its facts (knowledge-graph lookup).
+  entities?: CanonEntity[];
+  onEntityFacts?: (id: number) => Promise<CanonFact[]>;
 };
 
 export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function MarkdownEditor(
@@ -37,12 +43,16 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function M
     onTabContinue,
     readOnly = false,
     theme,
+    entities,
+    onEntityFacts,
   }: Props,
   externalRef
 ) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
+  const entityIndexRef = useRef<Map<string, number>>(new Map());
+  const onFactsRef = useRef(onEntityFacts);
   const onSaveRef = useRef(onSaveShortcut);
   const onCommandKRef = useRef(onCommandK);
   const onTabContinueRef = useRef(onTabContinue);
@@ -62,6 +72,17 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function M
   useEffect(() => {
     onTabContinueRef.current = onTabContinue;
   }, [onTabContinue]);
+  useEffect(() => {
+    onFactsRef.current = onEntityFacts;
+  }, [onEntityFacts]);
+  useEffect(() => {
+    const idx = new Map<string, number>();
+    for (const e of entities ?? [])
+      for (const nm of e.names)
+        for (const tok of nm.toLowerCase().split(/[^a-z0-9]+/))
+          if (tok.length >= 3 && !idx.has(tok)) idx.set(tok, e.id);
+    entityIndexRef.current = idx;
+  }, [entities]);
 
   const resolvedTheme: "light" | "dark" =
     theme ??
@@ -120,6 +141,58 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function M
       }
     });
 
+    // Hovering a canon entity's name shows its facts (knowledge-graph lookup).
+    const canonHover = hoverTooltip(async (view, pos) => {
+      const idx = entityIndexRef.current;
+      const fetchFacts = onFactsRef.current;
+      if (idx.size === 0 || !fetchFacts) return null;
+      const line = view.state.doc.lineAt(pos);
+      const rel = pos - line.from;
+      const re = /[A-Za-z0-9'’-]+/g;
+      let word: { from: number; to: number; text: string } | null = null;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(line.text)) !== null) {
+        if (m.index <= rel && rel <= m.index + m[0].length) {
+          word = {
+            from: line.from + m.index,
+            to: line.from + m.index + m[0].length,
+            text: m[0],
+          };
+          break;
+        }
+      }
+      if (!word) return null;
+      const id = idx.get(word.text.toLowerCase());
+      if (id === undefined) return null;
+      let facts: CanonFact[];
+      try {
+        facts = await fetchFacts(id);
+      } catch {
+        return null;
+      }
+      if (!facts.length) return null;
+      return {
+        pos: word.from,
+        end: word.to,
+        above: true,
+        create: () => {
+          const dom = document.createElement("div");
+          dom.style.cssText =
+            "max-width:340px;padding:6px 8px;font-size:12px;line-height:1.45;";
+          for (const f of facts.slice(0, 6)) {
+            const row = document.createElement("div");
+            const w = document.createElement("span");
+            w.textContent = `${f.canon_weight.replace(/_/g, " ")}: `;
+            w.style.opacity = "0.6";
+            row.appendChild(w);
+            row.appendChild(document.createTextNode(f.claim));
+            dom.appendChild(row);
+          }
+          return { dom };
+        },
+      };
+    });
+
     const state = EditorState.create({
       doc: initialContent,
       extensions: [
@@ -130,6 +203,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function M
         markdown({ codeLanguages: languages }),
         EditorView.lineWrapping,
         antiPatternLinter(),
+        canonHover,
         updateListener,
         themeCompartmentRef.current.of(
           resolvedTheme === "dark" ? oneDark : [],

@@ -86,6 +86,12 @@ export function FileEditor({
   const [voiceScore, setVoiceScore] = useState<{ score: number; band: string } | null>(null);
   const [continuity, setContinuity] = useState<ContinuityIssue[] | null>(null);
   const [checkingContinuity, setCheckingContinuity] = useState(false);
+  const [canonEntities, setCanonEntities] = useState<
+    { id: number; names: string[] }[]
+  >([]);
+  const factCacheRef = useRef<
+    Map<number, { canon_weight: string; claim: string }[]>
+  >(new Map());
   const isDark = useIsDarkTheme();
 
   // Record viewed paths for the recent-files store.
@@ -125,6 +131,37 @@ export function FileEditor({
     // onDirtyChange is a stable ref setter from the parent; intentionally omitted.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDirty]);
+
+  // Canon entities for the in-editor hover tooltip. Reset on story change;
+  // lazy-load the graph the first time you start editing.
+  useEffect(() => {
+    setCanonEntities([]);
+    factCacheRef.current.clear();
+  }, [activeStoryId]);
+  useEffect(() => {
+    if (!editing || activeStoryId === null || canonEntities.length > 0) return;
+    api
+      .kbGraph(activeStoryId)
+      .then((g) =>
+        setCanonEntities(
+          g.entities.map((e) => ({ id: e.id, names: [e.name, ...e.aliases] }))
+        )
+      )
+      .catch(() => {});
+  }, [editing, activeStoryId, canonEntities.length]);
+
+  const fetchEntityFacts = async (id: number) => {
+    const cached = factCacheRef.current.get(id);
+    if (cached) return cached;
+    if (activeStoryId === null) return [];
+    const r = await api.kbEntityFacts(activeStoryId, id);
+    const facts = r.facts.map((f) => ({
+      canon_weight: f.canon_weight,
+      claim: f.claim,
+    }));
+    factCacheRef.current.set(id, facts);
+    return facts;
+  };
 
   const beginEdit = () => {
     if (!file || !canEdit) return;
@@ -461,6 +498,8 @@ export function FileEditor({
                     }
                   }}
                   theme={isDark ? "dark" : "light"}
+                  entities={canonEntities}
+                  onEntityFacts={fetchEntityFacts}
                 />
               </>
             ) : (
