@@ -19,6 +19,10 @@ const Schema = z.object({
   UNCENSORED_INCLUDE: z.string().default("Uncensored/**"),
   CHUNK_TOKENS: z.coerce.number().default(500),
   CHUNK_OVERLAP: z.coerce.number().default(50),
+  // Series/book scope detection from a folder path. Comma-separated patterns;
+  // segments are literals or :series / :book placeholders. First match wins.
+  // Add your tree's shape, e.g. novels/series/:series/books/:book
+  SCOPE_PATTERNS: z.string().default("Books/:series/:book,Story Ideas/:series"),
   EMBED_RPM: z.coerce.number().default(3),
   EMBED_TPM: z.coerce.number().default(10000),
   EMBED_RETRY_MAX: z.coerce.number().default(6),

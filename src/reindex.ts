@@ -10,7 +10,7 @@ import { walkVault, type FileMeta } from "./walk.ts";
 import { chunkMarkdown } from "./chunker.ts";
 import { tagsFor } from "./tags.ts";
 import { embedBatch, toFloat32Buffer } from "./embed.ts";
-import { scopeFromPath } from "./knowledge/scope.ts";
+import { scopeFromPath, parseScopePatterns } from "./knowledge/scope.ts";
 
 type FileRow = { id: number; path: string; hash: string; mtime_ms: number };
 
@@ -143,7 +143,10 @@ export async function reindexFile(
   const texts = chunks.map((c) => c.content);
   const { embeddings, tokens } = await embedBatch(cfg, texts, "document");
 
-  const { series, book } = scopeFromPath(relPath);
+  const { series, book } = scopeFromPath(
+    relPath,
+    parseScopePatterns(cfg.SCOPE_PATTERNS)
+  );
 
   const insertChunk = db.prepare<
     { id: number },

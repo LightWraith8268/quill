@@ -20,7 +20,7 @@ import {
   factHistory,
 } from "./knowledge/history.ts";
 import { checkContinuityFile } from "./knowledge/continuity.ts";
-import { scopeFromPath } from "./knowledge/scope.ts";
+import { scopeFromPath, parseScopePatterns } from "./knowledge/scope.ts";
 import { alignBeats, pacingReport } from "./knowledge/structure.ts";
 import { openWorkspace } from "./workspace.ts";
 import { writeFile } from "node:fs/promises";
@@ -366,7 +366,9 @@ async function main(): Promise<void> {
           console.error("kb continuity <file> [--series S] [--no-llm]");
           process.exit(2);
         }
-        const series = arg(rest, "--series") ?? scopeFromPath(file).series;
+        const series =
+          arg(rest, "--series") ??
+          scopeFromPath(file, parseScopePatterns(cfg.SCOPE_PATTERNS)).series;
         const useLlm = !hasFlag(rest, "--no-llm");
         const issues = await checkContinuityFile(cfg, db, { series, file, useLlm });
         console.log(JSON.stringify(issues, null, 2));

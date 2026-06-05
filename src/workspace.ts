@@ -8,7 +8,7 @@ import { existsSync } from "node:fs";
 import type { Config } from "./config.ts";
 import type { DB } from "./db.ts";
 import { upsertStory, type Story } from "./stories.ts";
-import { scopeFromPath, type Scope } from "./knowledge/scope.ts";
+import { scopeFromPath, parseScopePatterns, type Scope } from "./knowledge/scope.ts";
 
 export function writingRoot(cfg: Config): string {
   return cfg.WRITING_ROOT || cfg.VAULT_PATH;
@@ -48,7 +48,7 @@ export type Workspace = { story: Story; scope: Scope; cwd: string };
 
 export function openWorkspace(cfg: Config, db: DB, input: string): Workspace {
   const rel = resolveWorkspaceRel(cfg, input);
-  const scope = scopeFromPath(rel);
+  const scope = scopeFromPath(rel, parseScopePatterns(cfg.SCOPE_PATTERNS));
   const name = basename(rel) || "(root)";
   const story = upsertStory(db, { path: rel, name, series: scope.series });
   const root = writingRoot(cfg);
