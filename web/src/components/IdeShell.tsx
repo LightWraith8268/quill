@@ -214,6 +214,17 @@ export function IdeShell({
         setActiveStoryId(r.story.id);
         setChatOpen(true);
         setMobilePane("chat");
+        // Reflect the folder in the URL so it's bookmarkable / lockable
+        // (code-server style: ?folder=/abs/path).
+        try {
+          window.history.replaceState(
+            null,
+            "",
+            `?folder=${encodeURIComponent(r.folder)}`
+          );
+        } catch {
+          /* ignore */
+        }
       })
       .catch((e: Error) => onError?.(e.message));
   };

@@ -20,6 +20,14 @@ function getShareToken(): string | null {
   return m ? decodeURIComponent(m[1]!) : null;
 }
 
+// code-server-style deep link: ?folder=/abs/path (or a writing-root-relative
+// path) opens that folder as the active workspace on load.
+function getFolderParam(): string | null {
+  if (typeof window === "undefined") return null;
+  const m = window.location.search.match(/(?:^|[?&])folder=([^&]+)/);
+  return m ? decodeURIComponent(m[1]!) : null;
+}
+
 function ShareView({ token }: { token: string }) {
   const [data, setData] = useState<{ label: string | null; filePath: string; content: string } | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -75,6 +83,17 @@ export default function App() {
       localStorage.removeItem(ACTIVE_STORY_KEY);
     }
   }, [activeStoryId]);
+
+  // ?folder=<path> deep link: open that folder as the active workspace.
+  useEffect(() => {
+    if (!authed) return;
+    const folder = getFolderParam();
+    if (!folder) return;
+    api
+      .openWorkspace(folder)
+      .then((r) => setActiveStoryId(r.story.id))
+      .catch((e: Error) => setBootError(`open folder failed: ${e.message}`));
+  }, [authed]);
 
   if (shareToken) return <ShareView token={shareToken} />;
 

@@ -21,20 +21,38 @@ export function safeRelFolder(relPath: string): string {
   return norm;
 }
 
+// Accept either a writing-root-relative path or an absolute path *under* the
+// writing root (code-server-style ?folder=/abs/path deep links), and return the
+// guarded relative path. Absolute paths outside the root are rejected.
+export function resolveWorkspaceRel(cfg: Config, input: string): string {
+  const root = writingRoot(cfg).replace(/\\/g, "/").replace(/\/+$/, "");
+  let p = input.replace(/\\/g, "/");
+  if (p.startsWith("/") || /^[A-Za-z]:/.test(p)) {
+    const norm = p.replace(/\/+$/, "");
+    if (norm === root) return "";
+    if (!norm.startsWith(root + "/")) {
+      throw new Error(`folder is outside the writing root (${root})`);
+    }
+    p = norm.slice(root.length + 1);
+  }
+  return safeRelFolder(p);
+}
+
 // The cwd a story's chat runs in: its own folder if it exists, else the vault.
 export function storyCwd(cfg: Config, story: { path: string }): string {
-  const abs = join(cfg.VAULT_PATH, story.path);
+  const abs = join(writingRoot(cfg), story.path);
   return existsSync(abs) ? abs : cfg.VAULT_PATH;
 }
 
 export type Workspace = { story: Story; scope: Scope; cwd: string };
 
-export function openWorkspace(cfg: Config, db: DB, relPath: string): Workspace {
-  const rel = safeRelFolder(relPath);
+export function openWorkspace(cfg: Config, db: DB, input: string): Workspace {
+  const rel = resolveWorkspaceRel(cfg, input);
   const scope = scopeFromPath(rel);
   const name = basename(rel) || "(root)";
   const story = upsertStory(db, { path: rel, name, series: scope.series });
-  const abs = join(cfg.VAULT_PATH, rel);
+  const root = writingRoot(cfg);
+  const abs = rel ? join(root, rel) : root;
   const cwd = existsSync(abs) ? abs : cfg.VAULT_PATH;
   return { story, scope, cwd };
 }

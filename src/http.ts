@@ -1368,7 +1368,7 @@ export function buildApp(cfg: Config) {
     if (!path) return c.json({ error: "path required" }, 400);
     try {
       const ws = openWorkspace(cfg, db, path);
-      return c.json({ story: ws.story, scope: ws.scope });
+      return c.json({ story: ws.story, scope: ws.scope, folder: ws.cwd });
     } catch (e) {
       return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
     }
