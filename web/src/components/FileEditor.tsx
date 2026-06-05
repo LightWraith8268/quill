@@ -152,6 +152,16 @@ export function FileEditor({
         .voiceCheck(dirtyContent.slice(0, 4000))
         .then((v) => setVoiceScore({ score: v.score, band: v.band }))
         .catch(() => {});
+      // Background continuity lint — fast heuristic only (no LLM), surfaces
+      // contradictions vs canon only when there are any.
+      if (activeStoryId !== null) {
+        api
+          .kbContinuityText(activeStoryId, dirtyContent, false)
+          .then((res) => {
+            if (res.issues.length > 0) setContinuity(res.issues);
+          })
+          .catch(() => {});
+      }
       setEditing(false);
       setDirtyContent("");
     } catch (e) {
