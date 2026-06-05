@@ -25,6 +25,7 @@ import { LoreBrowser } from "./LoreBrowser.tsx";
 import { CanonBrowser } from "./CanonBrowser.tsx";
 import { CharacterTimeline } from "./CharacterTimeline.tsx";
 import { OutlineView } from "./OutlineView.tsx";
+import { StructureBrowser } from "./StructureBrowser.tsx";
 import { StyleBrowser } from "./StyleBrowser.tsx";
 import { StatsPanel } from "./StatsPanel.tsx";
 import { WorkflowRunner } from "./WorkflowRunner.tsx";
@@ -36,6 +37,7 @@ type CenterView =
   | "canon"
   | "characters"
   | "outline"
+  | "structure"
   | "workflows"
   | "styles"
   | "stats";
@@ -59,6 +61,7 @@ const VIEW_META: Record<CenterView, { title: string; icon: string; needsStory?: 
   canon: { title: "Canon", icon: "📜", needsStory: true },
   characters: { title: "Characters", icon: "👤" },
   outline: { title: "Outline", icon: "🗺", needsStory: true },
+  structure: { title: "Structure", icon: "📐", needsStory: true },
   workflows: { title: "Workflows", icon: "⚙", needsStory: true },
   styles: { title: "Styles", icon: "✒" },
   stats: { title: "Stats", icon: "📊" },
@@ -70,6 +73,7 @@ const AUX_ORDER: AuxView[] = [
   "canon",
   "characters",
   "outline",
+  "structure",
   "workflows",
   "styles",
   "stats",
@@ -436,6 +440,8 @@ function AuxBody({
       return <CharacterTimeline defaultSeries={null} />;
     case "outline":
       return <OutlineView storyId={activeStoryId as number} />;
+    case "structure":
+      return <StructureBrowser storyId={activeStoryId as number} />;
     case "workflows":
       return (
         <WorkflowRunner

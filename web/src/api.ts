@@ -253,6 +253,12 @@ export const api = {
     ),
   kbExtract: (storyId: number) =>
     req<Record<string, unknown>>(`/stories/${storyId}/kb/extract`, { method: "POST" }),
+  kbBeats: (storyId: number, template = "save-the-cat") =>
+    req<BeatAlignment>(
+      `/stories/${storyId}/kb/beats?template=${encodeURIComponent(template)}`
+    ),
+  kbPacing: (storyId: number) =>
+    req<PacingReport>(`/stories/${storyId}/kb/pacing`),
   pronunciationGet: () => req<Record<string, string>>("/pronunciation"),
   pronunciationSet: (map: Record<string, string>) =>
     req<{ ok: boolean }>("/pronunciation", { method: "PUT", body: map }),
@@ -562,6 +568,32 @@ export type CanonItem = {
   sourcePath: string | null;
   sourceRef: string | null;
   score: number;
+};
+
+export type BeatStatus = "present" | "weak" | "missing";
+export type BeatResult = {
+  beat: string;
+  status: BeatStatus;
+  chapter: string | null;
+  note: string;
+};
+export type BeatAlignment = {
+  template: string;
+  coverage: number;
+  beats: BeatResult[];
+};
+export type PacingChapter = {
+  title: string;
+  path: string;
+  words: number;
+  z: number;
+  outlier: boolean;
+};
+export type PacingReport = {
+  mean: number;
+  stdev: number;
+  chapters: PacingChapter[];
+  outliers: string[];
 };
 
 export type DailyWordRow = {
