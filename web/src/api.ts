@@ -969,11 +969,13 @@ export async function* regenerateStream(
 export async function* ensembleStream(
   storyId: number,
   message: string,
-  agents?: AgentName[]
+  opts?: { agents?: AgentName[]; roles?: boolean; synthesize?: boolean }
 ): AsyncGenerator<{ event: string; data: unknown }, void, void> {
   const reader = await openSse(`/api/stories/${storyId}/ensemble`, {
     message,
-    agents,
+    agents: opts?.agents,
+    roles: opts?.roles,
+    synthesize: opts?.synthesize,
   });
   yield* parseSse(reader);
 }

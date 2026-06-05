@@ -194,6 +194,8 @@ const VoiceCheckBody = z.object({
 const EnsembleBody = z.object({
   message: z.string().min(1),
   agents: z.array(z.enum(["claude", "codex", "gemini"])).optional(),
+  roles: z.boolean().optional(),
+  synthesize: z.boolean().optional(),
 });
 
 const InlineEditBody = z.object({
@@ -1255,6 +1257,8 @@ export function buildApp(cfg: Config) {
             storyId: id,
             message: parsed.data.message,
             agents: parsed.data.agents,
+            roles: parsed.data.roles,
+            synthesize: parsed.data.synthesize,
           })) {
             send(ev.type, ev);
           }
