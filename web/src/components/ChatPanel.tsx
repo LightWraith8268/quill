@@ -196,7 +196,7 @@ export function ChatPanel({ storyId }: Props) {
   const placeholder = useMemo(() => {
     if (!storyId) return "Pick a story first.";
     if (busy) return "Streaming…";
-    return "Message — Cmd/Ctrl+Enter to send";
+    return "Message — Enter to send, Shift+Enter for newline";
   }, [storyId, busy]);
 
   if (!storyId) {
@@ -365,9 +365,21 @@ export function ChatPanel({ storyId }: Props) {
           placeholder={placeholder}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-              e.preventDefault();
-              send();
+            if (e.key !== "Enter") return;
+            if (e.shiftKey) return; // Shift+Enter → newline (default)
+            e.preventDefault();
+            if (e.ctrlKey || e.metaKey) {
+              // Ctrl/Cmd+Enter → insert a newline at the cursor
+              const ta = e.currentTarget;
+              const start = ta.selectionStart;
+              const end = ta.selectionEnd;
+              const next = draft.slice(0, start) + "\n" + draft.slice(end);
+              setDraft(next);
+              requestAnimationFrame(() => {
+                ta.selectionStart = ta.selectionEnd = start + 1;
+              });
+            } else {
+              send(); // plain Enter → send
             }
           }}
           disabled={busy}
