@@ -284,6 +284,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ precedingText, storyId, variant }),
     }),
+  editPasses: () => req<{ passes: EditorialPassMeta[] }>(`/edit/passes`),
+  editPass: (text: string, pass: string, storyId?: number) =>
+    req<{ revised: string; pass: string; model: string | null }>(`/edit/pass`, {
+      method: "POST",
+      body: JSON.stringify({ text, pass, storyId }),
+    }),
   kbSearch: (storyId: number, q: string, facts = 12, chunks = 6) =>
     req<{ items: CanonItem[] }>(
       `/stories/${storyId}/kb/search?q=${encodeURIComponent(q)}&facts=${facts}&chunks=${chunks}`
@@ -689,6 +695,7 @@ export type KnowledgeState = {
   active: TimelineFact[];
   future: TimelineFact[];
 };
+export type EditorialPassMeta = { id: string; label: string; blurb: string };
 export type FactHistoryRow = {
   change_type: string;
   prev_claim: string | null;

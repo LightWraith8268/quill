@@ -17,6 +17,8 @@ export type MarkdownEditorHandle = {
   replaceRange: (from: number, to: number, text: string) => void;
   insertAt: (pos: number, text: string) => void;
   getCursor: () => number;
+  getValue: () => string;
+  setValue: (text: string) => void;
 };
 
 export type CanonEntity = { id: number; names: string[] };
@@ -323,6 +325,15 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function M
         const view = viewRef.current;
         if (!view) return 0;
         return view.state.selection.main.head;
+      },
+      getValue: () => viewRef.current?.state.doc.toString() ?? "",
+      setValue: (text) => {
+        const view = viewRef.current;
+        if (!view) return;
+        view.dispatch({
+          changes: { from: 0, to: view.state.doc.length, insert: text },
+        });
+        view.focus();
       },
     }),
     []

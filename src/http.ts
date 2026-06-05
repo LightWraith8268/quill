@@ -64,6 +64,7 @@ import { listUsageEvents, usageRollup } from "./usage.ts";
 import { checkVoice } from "./voice.ts";
 import { runEnsemble } from "./ensemble.ts";
 import { inlineEditStream, inlineContinueStream, inlineGhost } from "./inline.ts";
+import { editorialPass, isEditorialPass, EDITORIAL_PASSES } from "./editorial.ts";
 import {
   listOutline,
   createNode,
@@ -203,6 +204,12 @@ const InlineGhostBody = z.object({
   storyId: z.number().int().positive().optional(),
   precedingText: z.string().min(1),
   variant: z.number().int().min(0).optional(),
+});
+
+const EditorialBody = z.object({
+  storyId: z.number().int().positive().optional(),
+  text: z.string().min(1),
+  pass: z.string().min(1),
 });
 
 const OutlineCreateBody = z.object({
@@ -774,6 +781,35 @@ export function buildApp(cfg: Config) {
     if (!parsed.success) return c.json({ error: "bad request", issues: parsed.error.flatten() }, 400);
     try {
       const result = await inlineGhost(cfg, db, parsed.data);
+      return c.json(result);
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
+    }
+  });
+
+  // Editorial passes — list available passes, and run one over text/selection.
+  app.get("/api/edit/passes", (c) =>
+    c.json({
+      passes: Object.entries(EDITORIAL_PASSES).map(([id, p]) => ({
+        id,
+        label: p.label,
+        blurb: p.blurb,
+      })),
+    })
+  );
+
+  app.post("/api/edit/pass", async (c) => {
+    const parsed = EditorialBody.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return c.json({ error: "bad request", issues: parsed.error.flatten() }, 400);
+    if (!isEditorialPass(parsed.data.pass)) {
+      return c.json({ error: `unknown pass "${parsed.data.pass}"` }, 400);
+    }
+    try {
+      const result = await editorialPass(cfg, db, {
+        storyId: parsed.data.storyId,
+        text: parsed.data.text,
+        pass: parsed.data.pass,
+      });
       return c.json(result);
     } catch (e) {
       return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);

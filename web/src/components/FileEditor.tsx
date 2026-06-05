@@ -16,6 +16,7 @@ import { DiffView } from "./DiffView.tsx";
 import { MarkdownView } from "./MarkdownView.tsx";
 import { MarkdownEditor, type MarkdownEditorHandle } from "./MarkdownEditor.tsx";
 import { InlineRewriteModal } from "./InlineRewriteModal.tsx";
+import { EditorialPanel } from "./EditorialPanel.tsx";
 import { lintSummary } from "../editor/linter.ts";
 import { readAloud, stopReading } from "../tts.ts";
 import { recentFiles } from "../recents.ts";
@@ -83,6 +84,7 @@ export function FileEditor({
     range: { from: number; to: number };
   } | null>(null);
   const [continuing, setContinuing] = useState(false);
+  const [showEditorial, setShowEditorial] = useState(false);
   const [ghost, setGhost] = useState<boolean>(
     () => typeof localStorage !== "undefined" && localStorage.getItem("quill.ghost") === "1",
   );
@@ -432,6 +434,14 @@ export function FileEditor({
                     </button>
                     <button
                       type="button"
+                      className={`btn text-xs ${showEditorial ? "btn-primary" : "btn-ghost"}`}
+                      onClick={() => setShowEditorial((v) => !v)}
+                      title="Editorial passes — tighten, dialogue, sensory, pacing, line-edit, with per-change accept/reject"
+                    >
+                      ✦ Passes
+                    </button>
+                    <button
+                      type="button"
                       className="btn btn-primary text-xs"
                       onClick={saveEdit}
                       disabled={saving || !isDirty}
@@ -530,6 +540,17 @@ export function FileEditor({
                       .then((r) => r.text)
                   }
                 />
+                {showEditorial && (
+                  <EditorialPanel
+                    storyId={activeStoryId}
+                    getText={() => editorRef.current?.getValue() ?? dirtyContent}
+                    onApply={(text) => {
+                      editorRef.current?.setValue(text);
+                      setDirtyContent(text);
+                    }}
+                    onClose={() => setShowEditorial(false)}
+                  />
+                )}
               </>
             ) : (
               <FileContent content={file.content} onWikiClick={followWiki} />

@@ -62,7 +62,7 @@ function canonHint(db: DB, series: string | null, tail: string): string {
   return hits.length ? `=== CANON (respect; do not contradict) ===\n${hits.join("\n")}\n\n` : "";
 }
 
-async function buildStylePrefix(cfg: Config, db: DB, storyId?: number): Promise<string> {
+export async function buildStylePrefix(cfg: Config, db: DB, storyId?: number): Promise<string> {
   if (!storyId) return "";
   const story = getStory(db, storyId);
   if (!story?.active_style) return "";
