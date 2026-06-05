@@ -127,6 +127,9 @@ export function IdeShell({
 }) {
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   const [openPath, setOpenPath] = useState<string | null>(null);
+  const [splitOpen, setSplitOpen] = useState(false);
+  const [splitPath, setSplitPath] = useState<string | null>(null);
+  const [activePane, setActivePane] = useState<"primary" | "secondary">("primary");
   const [centerView, setCenterView] = useState<CenterView>("editor");
   const [mobilePane, setMobilePane] = useState<MobilePane>(
     activeStoryId ? "chat" : "files",
@@ -170,17 +173,30 @@ export function IdeShell({
   const openPathRef = useRef(openPath);
   openPathRef.current = openPath;
 
-  const openFile = (p: string) => {
+  const openFileInto = (pane: "primary" | "secondary", p: string) => {
     if (
+      pane === "primary" &&
       p !== openPathRef.current &&
       dirtyRef.current &&
       !window.confirm("Discard unsaved changes to the current file?")
     ) {
       return;
     }
-    setOpenPath(p);
+    setActivePane(pane);
+    if (pane === "secondary") setSplitPath(p);
+    else setOpenPath(p);
     setCenterView("editor");
     setMobilePane("editor");
+  };
+  // Tree / palette / citation open into the focused pane (primary unless split).
+  const openFile = (p: string) =>
+    openFileInto(isDesktop && splitOpen ? activePane : "primary", p);
+
+  const toggleSplit = () => {
+    setSplitOpen((v) => {
+      setActivePane(v ? "primary" : "secondary");
+      return !v;
+    });
   };
   const openFileRef = useRef(openFile);
   openFileRef.current = openFile;
@@ -383,15 +399,61 @@ export function IdeShell({
           centerShown ? "flex-1" : "hidden",
         )}
       >
-        <div className={cx("h-full min-h-0", centerView !== "editor" && "hidden")}>
-          <FileEditor
-            path={openPath}
-            activeStoryId={activeStoryId}
-            onOpenPath={openFile}
-            onDirtyChange={(d) => {
-              dirtyRef.current = d;
-            }}
-          />
+        <div
+          className={cx(
+            "h-full min-h-0 flex flex-col",
+            centerView !== "editor" && "hidden",
+          )}
+        >
+          {isDesktop && (
+            <div className="flex items-center px-1 pb-1 shrink-0">
+              <button
+                className="btn btn-ghost text-xs ml-auto"
+                onClick={toggleSplit}
+                title="View two files side by side"
+              >
+                {splitOpen ? "Unsplit" : "Split ▥"}
+              </button>
+            </div>
+          )}
+          <div className="flex-1 min-h-0 flex gap-2">
+            <div
+              className={cx(
+                "flex-1 min-w-0 rounded",
+                splitOpen &&
+                  isDesktop &&
+                  activePane === "primary" &&
+                  "ring-1 ring-tealBright/40",
+              )}
+              onMouseDown={() => {
+                if (splitOpen && isDesktop) setActivePane("primary");
+              }}
+            >
+              <FileEditor
+                path={openPath}
+                activeStoryId={activeStoryId}
+                onOpenPath={(p) => openFileInto("primary", p)}
+                onDirtyChange={(d) => {
+                  dirtyRef.current = d;
+                }}
+              />
+            </div>
+            {splitOpen && isDesktop && (
+              <div
+                className={cx(
+                  "flex-1 min-w-0 rounded",
+                  activePane === "secondary" && "ring-1 ring-tealBright/40",
+                )}
+                onMouseDown={() => setActivePane("secondary")}
+              >
+                <FileEditor
+                  path={splitPath}
+                  activeStoryId={activeStoryId}
+                  onOpenPath={(p) => openFileInto("secondary", p)}
+                />
+              </div>
+            )}
+          </div>
         </div>
         <div
           className={cx(
