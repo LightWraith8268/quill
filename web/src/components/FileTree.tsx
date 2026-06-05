@@ -6,6 +6,7 @@
 import { useEffect, useState } from "react";
 import { api, type TreeNode } from "../api.ts";
 import { RecentFiles } from "./RecentFiles.tsx";
+import { useRecentWorkspaces } from "../recents.ts";
 
 export function FileTree({
   activePath,
@@ -19,6 +20,7 @@ export function FileTree({
   const [tree, setTree] = useState<TreeNode | null>(null);
   const [openDirs, setOpenDirs] = useState<Set<string>>(() => new Set([""]));
   const [err, setErr] = useState<string | null>(null);
+  const ws = useRecentWorkspaces();
 
   useEffect(() => {
     api.vaultTree().then(setTree).catch((e: Error) => setErr(e.message));
@@ -35,6 +37,29 @@ export function FileTree({
 
   return (
     <div className="h-full overflow-auto">
+      {onOpenWorkspace && ws.recents.length > 0 && (
+        <div className="card space-y-1 mb-3 p-2">
+          <div className="text-[11px] text-muted uppercase tracking-wide flex items-center">
+            Workspaces
+            <button
+              onClick={ws.clear}
+              className="ml-auto text-muted hover:text-tealBright normal-case"
+            >
+              clear
+            </button>
+          </div>
+          {ws.recents.map((w) => (
+            <button
+              key={w.path}
+              onClick={() => onOpenWorkspace(w.path)}
+              title={w.path}
+              className="w-full text-left truncate text-tealBright hover:underline"
+            >
+              📂 {w.name}
+            </button>
+          ))}
+        </div>
+      )}
       <RecentFiles onPick={onPick} />
       <h3 className="font-display text-lg mb-1">Vault</h3>
       {onOpenWorkspace && (

@@ -83,6 +83,13 @@ export const recentFiles = new RingStore<RecentFileEntry>(
   (a, b) => a.path === b.path,
 );
 
+export type RecentWorkspaceEntry = { path: string; name: string; ts: number };
+export const recentWorkspaces = new RingStore<RecentWorkspaceEntry>(
+  "quill.recentWorkspaces",
+  12,
+  (a, b) => a.path === b.path,
+);
+
 function useRingStore<T>(store: RingStore<T>): T[] {
   const [items, setItems] = useState<T[]>(() => store.list());
   useEffect(() => {
@@ -108,5 +115,15 @@ export function useRecentFiles() {
     recents: entries.map((e) => e.path),
     record: (path: string) => recentFiles.push({ path, ts: Date.now() }),
     clear: () => recentFiles.clear(),
+  };
+}
+
+export function useRecentWorkspaces() {
+  const entries = useRingStore(recentWorkspaces);
+  return {
+    recents: entries,
+    record: (path: string, name: string) =>
+      recentWorkspaces.push({ path, name, ts: Date.now() }),
+    clear: () => recentWorkspaces.clear(),
   };
 }

@@ -4,6 +4,7 @@ import { Login } from "./components/Login.tsx";
 import { TopBar } from "./components/TopBar.tsx";
 import { StoryPicker } from "./components/StoryPicker.tsx";
 import { IdeShell } from "./components/IdeShell.tsx";
+import { recentWorkspaces } from "./recents.ts";
 
 const ACTIVE_STORY_KEY = "quill.activeStoryId";
 
@@ -91,7 +92,10 @@ export default function App() {
     if (!folder) return;
     api
       .openWorkspace(folder)
-      .then((r) => setActiveStoryId(r.story.id))
+      .then((r) => {
+        setActiveStoryId(r.story.id);
+        recentWorkspaces.push({ path: r.story.path, name: r.story.name, ts: Date.now() });
+      })
       .catch((e: Error) => setBootError(`open folder failed: ${e.message}`));
   }, [authed]);
 

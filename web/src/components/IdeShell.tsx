@@ -17,6 +17,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api } from "../api.ts";
 import { VAULT_NAV_EVENT, VAULT_PENDING_KEY } from "../citations.ts";
+import { recentWorkspaces } from "../recents.ts";
 import { FileTree } from "./FileTree.tsx";
 import { FileEditor } from "./FileEditor.tsx";
 import { ChatPanel } from "./ChatPanel.tsx";
@@ -214,13 +215,14 @@ export function IdeShell({
         setActiveStoryId(r.story.id);
         setChatOpen(true);
         setMobilePane("chat");
-        // Reflect the folder in the URL so it's bookmarkable / lockable
-        // (code-server style: ?folder=/abs/path).
+        recentWorkspaces.push({ path: r.story.path, name: r.story.name, ts: Date.now() });
+        // Reflect the folder in the URL (writing-root-relative, so no absolute
+        // prefix) — bookmarkable / lockable, code-server style.
         try {
           window.history.replaceState(
             null,
             "",
-            `?folder=${encodeURIComponent(r.folder)}`
+            `?folder=${encodeURIComponent(r.story.path)}`
           );
         } catch {
           /* ignore */
